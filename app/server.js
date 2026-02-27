@@ -93,7 +93,7 @@ fastify.get("/", function handler(_, reply) {
 });
 
 fastify.get("/qr", function handler(_, reply) {
-  reply.view("qr.ejs", { qr: getQr() });
+  reply.view("qr.ejs", { qr: getQr(), initialized: isInitialized() });
 });
 
 fastify.get("/chats", async function handler(_, reply) {
@@ -184,6 +184,7 @@ fastify.after(() => {
             selectedEvents: Array.from(selection.selectedEvents),
             availableEvents: Array.from(supportedWsEvents),
             clientInitialized: isInitialized(),
+            currentQr: getQr(),
           },
         }),
       );

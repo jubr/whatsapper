@@ -49,6 +49,8 @@ GET ws://<host>:3000/api/v1/events/ws?events=message
 The bundled custom integration opens the websocket and emits a Home Assistant event:
 
 - `event_type: whatsapper_message`
+- Creates a Repairs issue (`qr_required`) when WhatsApp emits a `qr` event
+- Removes that Repairs issue automatically on `ready`
 
 Event payload keys:
 
@@ -58,6 +60,13 @@ Event payload keys:
 - `message_id`
 - `type`, `timestamp`
 - `raw` (original event payload data)
+
+### Repairs QR issue
+
+The integration uses Home Assistant Repairs (`homeassistant.helpers.issue_registry`) to raise a QR login issue when needed.
+The repair description includes the QR payload in a markdown fenced code block so it can be copied directly.
+
+When the WhatsApp session connects (`ready`), the issue is auto-deleted.
 
 ## Mount strategy (same repo, same deployable)
 

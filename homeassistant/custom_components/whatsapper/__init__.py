@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 from typing import Any
+from urllib.parse import quote
 
 import voluptuous as vol
 from aiohttp import WSMsgType
@@ -12,6 +13,7 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import issue_registry as ir
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,6 +23,9 @@ CONF_WS_PATH = "ws_path"
 DEFAULT_HOST_PORT = "localhost:4000"
 DEFAULT_WS_PATH = "/api/v1/events/ws"
 MESSAGE_EVENT = "whatsapper_message"
+WS_EVENTS = ("message", "qr", "ready")
+QR_REPAIRS_ISSUE_ID = "qr_required"
+QR_REPAIRS_TRANSLATION_KEY = "qr_required"
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -37,7 +42,8 @@ CONFIG_SCHEMA = vol.Schema(
 
 def _build_ws_url(host_port: str, ws_path: str) -> str:
     normalized_path = ws_path if ws_path.startswith("/") else f"/{ws_path}"
-    return f"ws://{host_port}{normalized_path}?events=message"
+    events_query = quote(",".join(WS_EVENTS), safe=",")
+    return f"ws://{host_port}{normalized_path}?events={events_query}"
 
 
 def _to_ha_message_event(payload: dict[str, Any]) -> dict[str, Any]:
@@ -57,6 +63,24 @@ def _to_ha_message_event(payload: dict[str, Any]) -> dict[str, Any]:
         "has_media": data.get("hasMedia"),
         "raw": data,
     }
+
+
+def _create_qr_issue(hass: HomeAssistant, qr_payload: str) -> None:
+    qr_code_block = f"```text\n{qr_payload}\n```"
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        QR_REPAIRS_ISSUE_ID,
+        is_fixable=False,
+        is_persistent=True,
+        severity=ir.IssueSeverity.ERROR,
+        translation_key=QR_REPAIRS_TRANSLATION_KEY,
+        translation_placeholders={"qr_code_block": qr_code_block},
+    )
+
+
+def _delete_qr_issue(hass: HomeAssistant) -> None:
+    ir.async_delete_issue(hass, DOMAIN, QR_REPAIRS_ISSUE_ID)
 
 
 async def _listen_for_messages(hass: HomeAssistant, ws_url: str) -> None:
@@ -81,10 +105,31 @@ async def _listen_for_messages(hass: HomeAssistant, ws_url: str) -> None:
                         _LOGGER.debug("Ignoring malformed websocket message: %s", ws_message.data)
                         continue
 
-                    if payload.get("event") != "message":
+                    if payload.get("type") == "connected":
+                        connected_data = payload.get("data", {})
+                        if connected_data.get("clientInitialized"):
+                            _delete_qr_issue(hass)
+                        else:
+                            current_qr = connected_data.get("currentQr")
+                            if isinstance(current_qr, str) and current_qr:
+                                _create_qr_issue(hass, current_qr)
                         continue
 
-                    hass.bus.async_fire(MESSAGE_EVENT, _to_ha_message_event(payload))
+                    event_name = payload.get("event")
+
+                    if event_name == "message":
+                        hass.bus.async_fire(MESSAGE_EVENT, _to_ha_message_event(payload))
+                        continue
+
+                    if event_name == "qr":
+                        qr_payload = payload.get("data", {}).get("qr")
+                        if isinstance(qr_payload, str) and qr_payload:
+                            _create_qr_issue(hass, qr_payload)
+                        continue
+
+                    if event_name == "ready":
+                        _delete_qr_issue(hass)
+                        continue
         except asyncio.CancelledError:
             raise
         except Exception as err:  # pylint: disable=broad-except

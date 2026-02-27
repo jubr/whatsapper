@@ -18,12 +18,16 @@ For the full WhatsApp API surface, use the upstream docs directly:
    - copied to `/config/custom_components/whatsapper` (through `HA_CUSTOM_COMPONENTS_PATH`)
 3. A Home Assistant event bridge:
    - incoming WhatsApp messages become HA events of type `whatsapper_message`
+4. A Repairs issue lifecycle for QR:
+   - creates `qr_required` with a markdown code block when a new QR is emitted
+   - removes the issue automatically when WhatsApp reports `ready`
 
 ## Differences vs raw `whatsapp-web.js`
 
 - Websocket payloads are plain JSON envelopes, not class instances.
 - IDs are serialized strings (`chatId`, `id`) so they can be reused directly in automations.
 - For now, the HA bridge consumes `message` events only (message-receive first).
+- The integration additionally consumes `qr` and `ready` to manage the Repairs QR issue.
 
 Envelope format:
 
@@ -59,6 +63,14 @@ notify:
     host_port: whatsapper:3000
     chat_id: 123123123@g.us
 ```
+
+## Ingress QR page
+
+Use `/qr` through ingress or direct access to:
+
+- view the current QR payload in a `<pre><code>` block
+- open an external renderer via `qrcode.show`
+- see a connected/no-QR-needed status when already linked
 
 ## Example automation: `whatsapper-ping(.*)` -> `whatsapper-pong$1`
 

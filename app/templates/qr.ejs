@@ -1,1 +1,16 @@
-<h2><a href="https://qrcode.show/<%= qr %>">Show qrcode</a></h2>
+<% if (qr) { %>
+  <h2>WhatsApp login QR payload</h2>
+  <p>Use this payload in tools that render WhatsApp pairing QR codes.</p>
+  <pre><code><%= qr %></code></pre>
+  <p>
+    <a href="https://qrcode.show/<%= encodeURIComponent(qr) %>" target="_blank" rel="noopener noreferrer">
+      Show qrcode
+    </a>
+  </p>
+<% } else if (initialized) { %>
+  <h2>WhatsApp client is connected</h2>
+  <p>No QR code is required right now.</p>
+<% } else { %>
+  <h2>Waiting for a QR code...</h2>
+  <p>Refresh this page in a few seconds.</p>
+<% } %>

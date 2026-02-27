@@ -80,12 +80,14 @@ client.on("qr", (qr) => {
 
 client.on("ready", () => {
   clientInitialized = true;
+  receivedQr = null;
   console.log("Client is ready!");
   emitEvent("ready", { initialized: true });
 });
 
 client.on("disconnected", (reason) => {
   clientInitialized = false;
+  receivedQr = null;
   emitEvent("disconnected", { reason: reason || "UNKNOWN" });
 });
 

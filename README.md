@@ -28,6 +28,11 @@ node app/server.js
 `docker compose up`
 
 After startup, a QR code is printed in logs. You can also view the QR payload via `/qr`.
+When opened through Home Assistant ingress, the same page shows:
+
+- QR payload in a code block for copy/paste
+- direct link to render the QR
+- connected/no-QR-needed status when the session is already authenticated
 
 ## WebSocket events (`/api/v1/events/ws`)
 
@@ -46,6 +51,12 @@ ws://<host>:3000/api/v1/events/ws?events=message
 - `qr`
 - `disconnected`
 - `change_state`
+
+The bundled Home Assistant integration subscribes to `message`, `qr`, and `ready`:
+
+- `message` -> emits `whatsapper_message` in Home Assistant
+- `qr` -> creates a Repairs issue with QR payload as a markdown code block
+- `ready` -> removes that Repairs issue automatically
 
 ## Legacy command endpoints
 
