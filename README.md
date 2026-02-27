@@ -2,29 +2,19 @@
 
 A tiny web api on [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.js)
 
-## Usage
+## API overview
 
-After run, the QR code for association will be displayed on the console.
-Is also possible to get the string version from the path `/qr`
+- `POST /command` (legacy passthrough to `client[command](...params)`)
+- `POST /command/media` (legacy helper for `MessageMedia`)
+- `GET /api/v1/events/ws` (**WebSocket event stream**)
 
-After this, whatsapper is logged and you can forward all `whatsapp-web.js` calls via the `/command` api with this json syntax:
+For upstream method and type details, use:
 
-```json
-{
-  "command" : "cmd",
-  "params": ["param1", "param2"],
-}
-```
-
-this will be forwarded to the whatsapp-web.js and you will get back the return of the lib.
-
-## Special commands
-
-To send media, call with a `POST` via the `/command/media` api with this json syntax:
-
-```json
-    "params": ["remote_id to send the media to", "image/png", "29y78y424GWIOJFADIJFADS", "filename.png"],
-```
+- [Client](https://docs.wwebjs.dev/Client.html)
+- [Message](https://docs.wwebjs.dev/Message.html)
+- [Chat](https://docs.wwebjs.dev/Chat.html)
+- [Contact](https://docs.wwebjs.dev/Contact.html)
+- [MessageMedia](https://docs.wwebjs.dev/MessageMedia.html)
 
 ## Run
 
@@ -37,11 +27,50 @@ node app/server.js
 
 `docker compose up`
 
+After startup, a QR code is printed in logs. You can also view the QR payload via `/qr`.
+
+## WebSocket events (`/api/v1/events/ws`)
+
+Only websocket is used for incoming events in v1.
+
+Connect with:
+
+```text
+ws://<host>:3000/api/v1/events/ws?events=message
+```
+
+`events` is a comma-separated list. Supported values currently include:
+
+- `message`
+- `ready`
+- `qr`
+- `disconnected`
+- `change_state`
+
+## Legacy command endpoints
+
+Forward any `Client` method:
+
+```json
+{
+  "command": "sendMessage",
+  "params": ["123123123@g.us", "hello"]
+}
+```
+
+Send media:
+
+```json
+{
+  "params": ["123123123@g.us", "image/png", "BASE64_DATA", "image.png"]
+}
+```
+
 ## Bundled Home Assistant integration
 
 This image now bundles `custom_components/whatsapper` from:
 
-- https://github.com/jubr/whatsapper-ha-integration
+- this repository (`/homeassistant/custom_components/whatsapper`)
 
 On container startup, the integration is copied to:
 
@@ -63,12 +92,21 @@ If the integration is not shown on first boot, restart Home Assistant once after
 Then configure Home Assistant with the Docker service name as host:
 
 ```yaml
+whatsapper:
+  host_port: whatsapper:3000
+  ws_path: /api/v1/events/ws
+
 notify:
   - platform: whatsapper
     name: whatsapp
     host_port: whatsapper:3000
     chat_id: 123123123@g.us
 ```
+
+For message-receive automations (`whatsapper_message`) and ping/pong example, see:
+
+- [DOCS.md](./DOCS.md)
+- [docs/homeassistant-integration.md](./docs/homeassistant-integration.md)
 
 ## Push on docker hub (for me to remember)
 

@@ -55,7 +55,16 @@ class WhatsapperNotificationService(BaseNotificationService):
         """Send a message to the target."""
         try:
             # Use override from notify or the one in the config
-            chat_id = kwargs.get(ATTR_TARGET) if kwargs.get(ATTR_TARGET) else self.chat_id
+            target = kwargs.get(ATTR_TARGET)
+            if isinstance(target, list):
+                chat_id = target[0] if target else self.chat_id
+            else:
+                chat_id = target if target else self.chat_id
+
+            if not chat_id:
+                _LOGGER.error("chat_id is required to send a WhatsApp message")
+                return
+
             data = kwargs.get(ATTR_DATA)
 
             # Send image if all required image data is present
@@ -64,7 +73,7 @@ class WhatsapperNotificationService(BaseNotificationService):
                 body = {
                     "params": [chat_id, data[ATTR_IMAGE_TYPE], data[ATTR_IMAGE], data[ATTR_IMAGE_NAME]]
                 }
-                requests.post(url, json=body)
+                requests.post(url, json=body, timeout=15)
                 return
 
             # Send text message
@@ -74,7 +83,7 @@ class WhatsapperNotificationService(BaseNotificationService):
 
             url = f"http://{self.host_port}/command"
             body = {"command": "sendMessage", "params": [chat_id, msg]}
-            requests.post(url, json=body)
+            requests.post(url, json=body, timeout=15)
 
         except Exception as e:
             _LOGGER.error("Sending to %s failed: %s", chat_id, e)

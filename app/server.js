@@ -2,16 +2,90 @@
 
 const path = require("path");
 const { MessageMedia } = require("whatsapp-web.js");
-const { client, getQr, isInitialized } = require("./whatsappClient");
+const {
+  client,
+  getQr,
+  isInitialized,
+  subscribeToEvents,
+  WS_SUPPORTED_EVENTS,
+} = require("./whatsappClient");
 
 // web server configuration
 const fastify = require("fastify")({ logger: true });
+fastify.register(require("@fastify/websocket"));
 
 fastify.register(require("@fastify/view"), {
   engine: {
     ejs: require("ejs"),
   },
   root: path.join(__dirname, "templates"),
+});
+
+const websocketSubscriptions = new Set();
+const supportedWsEvents = new Set(WS_SUPPORTED_EVENTS);
+const isSocketOpen = (socket) => socket.readyState === socket.constructor.OPEN;
+
+const parseWsEventSelection = (requestedEvents) => {
+  if (requestedEvents === undefined || requestedEvents === null || requestedEvents === "") {
+    return { selectedEvents: new Set(["message"]) };
+  }
+
+  const flat = Array.isArray(requestedEvents)
+    ? requestedEvents.join(",")
+    : String(requestedEvents);
+  const selectedEvents = new Set(
+    flat
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+
+  if (selectedEvents.size === 0) {
+    return { selectedEvents: new Set(["message"]) };
+  }
+
+  for (const eventName of selectedEvents) {
+    if (!supportedWsEvents.has(eventName)) {
+      return {
+        error: `Unsupported event '${eventName}'. Supported events: ${Array.from(
+          supportedWsEvents,
+        ).join(", ")}`,
+      };
+    }
+  }
+
+  return { selectedEvents };
+};
+
+const broadcastEvent = (envelope) => {
+  const serializedEnvelope = JSON.stringify(envelope);
+
+  for (const subscription of websocketSubscriptions) {
+    if (!subscription.selectedEvents.has(envelope.event)) {
+      continue;
+    }
+
+    if (!isSocketOpen(subscription.socket)) {
+      websocketSubscriptions.delete(subscription);
+      continue;
+    }
+
+    try {
+      subscription.socket.send(serializedEnvelope);
+    } catch (error) {
+      fastify.log.warn({ error }, "Failed to send event over websocket");
+      websocketSubscriptions.delete(subscription);
+    }
+  }
+};
+
+const unsubscribeFromClientEvents = subscribeToEvents((envelope) => {
+  broadcastEvent(envelope);
+});
+
+fastify.addHook("onClose", (_instance, done) => {
+  unsubscribeFromClientEvents();
+  done();
 });
 
 fastify.get("/", function handler(_, reply) {
@@ -84,6 +158,56 @@ fastify.post("/command/:type", async function handler(request, reply) {
     reply.send({ error: e });
   }
 });
+
+fastify.get(
+  "/api/v1/events/ws",
+  { websocket: true },
+  function eventsWebSocket(connection, request) {
+    const selection = parseWsEventSelection(request.query?.events);
+    if (selection.error) {
+      connection.socket.close(1008, selection.error);
+      return;
+    }
+
+    const subscription = {
+      socket: connection.socket,
+      selectedEvents: selection.selectedEvents,
+    };
+    websocketSubscriptions.add(subscription);
+
+    connection.socket.send(
+      JSON.stringify({
+        type: "connected",
+        timestamp: new Date().toISOString(),
+        data: {
+          selectedEvents: Array.from(selection.selectedEvents),
+          availableEvents: Array.from(supportedWsEvents),
+          clientInitialized: isInitialized(),
+        },
+      }),
+    );
+
+    connection.socket.on("message", (rawBuffer) => {
+      try {
+        const payload = JSON.parse(rawBuffer.toString());
+        if (payload?.type === "ping") {
+          connection.socket.send(
+            JSON.stringify({
+              type: "pong",
+              timestamp: new Date().toISOString(),
+            }),
+          );
+        }
+      } catch (_) {
+        // Ignore malformed client messages. This endpoint is event-stream first.
+      }
+    });
+
+    const teardown = () => websocketSubscriptions.delete(subscription);
+    connection.socket.on("close", teardown);
+    connection.socket.on("error", teardown);
+  },
+);
 
 fastify.listen({ port: 3000, host: "0.0.0.0" }, (err) => {
   if (err) {

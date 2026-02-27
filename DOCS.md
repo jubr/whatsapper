@@ -1,0 +1,85 @@
+# Whatsapper Home Assistant app notes
+
+This document intentionally covers only the **glue** between Home Assistant and `whatsapp-web.js`.
+For the full WhatsApp API surface, use the upstream docs directly:
+
+- [`Client` API](https://docs.wwebjs.dev/Client.html)
+- [`Message` API](https://docs.wwebjs.dev/Message.html)
+- [`Chat` API](https://docs.wwebjs.dev/Chat.html)
+- [`Contact` API](https://docs.wwebjs.dev/Contact.html)
+- [`MessageMedia` API](https://docs.wwebjs.dev/MessageMedia.html)
+- [`Client` events (`message`, `message_ack`, etc.)](https://docs.wwebjs.dev/Client.html#event:message)
+
+## What this app adds
+
+1. A websocket event stream endpoint:
+   - `ws://<whatsapper-host>/api/v1/events/ws?events=message`
+2. Bundled Home Assistant custom integration source:
+   - copied to `/config/custom_components/whatsapper` (through `HA_CUSTOM_COMPONENTS_PATH`)
+3. A Home Assistant event bridge:
+   - incoming WhatsApp messages become HA events of type `whatsapper_message`
+
+## Differences vs raw `whatsapp-web.js`
+
+- Websocket payloads are plain JSON envelopes, not class instances.
+- IDs are serialized strings (`chatId`, `id`) so they can be reused directly in automations.
+- For now, the HA bridge consumes `message` events only (message-receive first).
+
+Envelope format:
+
+```json
+{
+  "eventId": "uuid",
+  "event": "message",
+  "timestamp": "2026-02-27T20:00:00.000Z",
+  "data": {
+    "id": "true_12345@c.us_ABCDEF",
+    "chatId": "12345@c.us",
+    "from": "12345@c.us",
+    "to": "99999@c.us",
+    "author": null,
+    "fromMe": false,
+    "body": "whatsapper-ping42",
+    "type": "chat",
+    "timestamp": 1700000000
+  }
+}
+```
+
+## Home Assistant `configuration.yaml`
+
+```yaml
+whatsapper:
+  host_port: whatsapper:3000
+  ws_path: /api/v1/events/ws
+
+notify:
+  - platform: whatsapper
+    name: whatsapp
+    host_port: whatsapper:3000
+    chat_id: 123123123@g.us
+```
+
+## Example automation: `whatsapper-ping(.*)` -> `whatsapper-pong$1`
+
+This catches incoming pings in any chat/channel and replies in the same target.
+
+```yaml
+automation:
+  - alias: Whatsapper Ping Pong
+    mode: parallel
+    trigger:
+      - platform: event
+        event_type: whatsapper_message
+    condition:
+      - condition: template
+        value_template: "{{ trigger.event.data.body is match('^whatsapper-ping(.*)$') }}"
+    variables:
+      ping_suffix: "{{ trigger.event.data.body | regex_findall_index('^whatsapper-ping(.*)$', 0) }}"
+    action:
+      - service: notify.whatsapp
+        data:
+          target:
+            - "{{ trigger.event.data.chat_id }}"
+          message: "whatsapper-pong{{ ping_suffix }}"
+```
