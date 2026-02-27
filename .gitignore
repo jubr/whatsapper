@@ -29,3 +29,6 @@ profile-*
 .wwebjs_auth
 
 .env
+
+__pycache__/
+*.pyc
