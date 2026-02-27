@@ -159,55 +159,57 @@ fastify.post("/command/:type", async function handler(request, reply) {
   }
 });
 
-fastify.get(
-  "/api/v1/events/ws",
-  { websocket: true },
-  function eventsWebSocket(connection, request) {
-    const selection = parseWsEventSelection(request.query?.events);
-    if (selection.error) {
-      connection.socket.close(1008, selection.error);
-      return;
-    }
-
-    const subscription = {
-      socket: connection.socket,
-      selectedEvents: selection.selectedEvents,
-    };
-    websocketSubscriptions.add(subscription);
-
-    connection.socket.send(
-      JSON.stringify({
-        type: "connected",
-        timestamp: new Date().toISOString(),
-        data: {
-          selectedEvents: Array.from(selection.selectedEvents),
-          availableEvents: Array.from(supportedWsEvents),
-          clientInitialized: isInitialized(),
-        },
-      }),
-    );
-
-    connection.socket.on("message", (rawBuffer) => {
-      try {
-        const payload = JSON.parse(rawBuffer.toString());
-        if (payload?.type === "ping") {
-          connection.socket.send(
-            JSON.stringify({
-              type: "pong",
-              timestamp: new Date().toISOString(),
-            }),
-          );
-        }
-      } catch (_) {
-        // Ignore malformed client messages. This endpoint is event-stream first.
+fastify.after(() => {
+  fastify.get(
+    "/api/v1/events/ws",
+    { websocket: true },
+    function eventsWebSocket(socket, request) {
+      const selection = parseWsEventSelection(request.query?.events);
+      if (selection.error) {
+        socket.close(1008, selection.error);
+        return;
       }
-    });
 
-    const teardown = () => websocketSubscriptions.delete(subscription);
-    connection.socket.on("close", teardown);
-    connection.socket.on("error", teardown);
-  },
-);
+      const subscription = {
+        socket,
+        selectedEvents: selection.selectedEvents,
+      };
+      websocketSubscriptions.add(subscription);
+
+      socket.send(
+        JSON.stringify({
+          type: "connected",
+          timestamp: new Date().toISOString(),
+          data: {
+            selectedEvents: Array.from(selection.selectedEvents),
+            availableEvents: Array.from(supportedWsEvents),
+            clientInitialized: isInitialized(),
+          },
+        }),
+      );
+
+      socket.on("message", (rawBuffer) => {
+        try {
+          const payload = JSON.parse(rawBuffer.toString());
+          if (payload?.type === "ping") {
+            socket.send(
+              JSON.stringify({
+                type: "pong",
+                timestamp: new Date().toISOString(),
+              }),
+            );
+          }
+        } catch (_) {
+          // Ignore malformed client messages. This endpoint is event-stream first.
+        }
+      });
+
+      const teardown = () => websocketSubscriptions.delete(subscription);
+      socket.on("close", teardown);
+      socket.on("error", teardown);
+    },
+  );
+});
 
 fastify.listen({ port: 3000, host: "0.0.0.0" }, (err) => {
   if (err) {
