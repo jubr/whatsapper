@@ -6,3 +6,7 @@ notify:
       name: Send message
       description: The message to send
       example: "Hello World"
+    target:
+      name: Chat target
+      description: "Optional chat_id (e.g. 12345@g.us) or chat/channel name to resolve."
+      example: "Family Group"

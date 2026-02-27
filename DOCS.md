@@ -21,6 +21,8 @@ For the full WhatsApp API surface, use the upstream docs directly:
 4. A Repairs issue lifecycle for QR:
    - creates `qr_required` with a markdown code block when a new QR is emitted
    - removes the issue automatically when WhatsApp reports `ready`
+5. Chat name lookup for notify targets:
+   - resolves channel/chat names to `chat_id` via `GET /api/v1/chats?name=...`
 
 ## Differences vs raw `whatsapp-web.js`
 
@@ -61,7 +63,9 @@ notify:
   - platform: whatsapper
     name: whatsapp
     host_port: whatsapper:3000
-    chat_id: 123123123@g.us
+    # Configure one default:
+    # chat_id: 123123123@g.us
+    chat_name: Family Group
 ```
 
 ## Ingress QR page

@@ -51,6 +51,7 @@ The bundled custom integration opens the websocket and emits a Home Assistant ev
 - `event_type: whatsapper_message`
 - Creates a Repairs issue (`qr_required`) when WhatsApp emits a `qr` event
 - Removes that Repairs issue automatically on `ready`
+- Resolves notify targets from chat/channel names to `chat_id` via `/api/v1/chats`
 
 Event payload keys:
 
@@ -101,8 +102,25 @@ notify:
   - platform: whatsapper
     name: whatsapp
     host_port: whatsapper:3000
-    chat_id: 123123123@g.us
+    # Configure one default:
+    # chat_id: 123123123@g.us
+    chat_name: Family Group
 ```
+
+### Target lookup behavior
+
+`notify.whatsapp` accepts:
+
+- `target: ["123123123@g.us"]` (direct ID)
+- `target: ["Family Group"]` (resolved by name)
+
+Name resolution calls:
+
+```text
+GET /api/v1/chats?name=<target_name>
+```
+
+If lookup is ambiguous (multiple matches) the send is aborted and a log error is emitted, so messages are not sent to the wrong chat.
 
 ## Example automation: ping -> pong
 

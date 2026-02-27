@@ -25,6 +25,15 @@ const websocketSubscriptions = new Set();
 const supportedWsEvents = new Set(WS_SUPPORTED_EVENTS);
 const isSocketOpen = (socket) => socket.readyState === socket.constructor.OPEN;
 
+const listChats = async () => {
+  const resp = await client.getChats();
+  return resp.map((chat) => ({
+    name: chat.name || "",
+    id: chat.id._serialized,
+    isGroup: Boolean(chat.isGroup),
+  }));
+};
+
 const parseWsEventSelection = (requestedEvents) => {
   if (requestedEvents === undefined || requestedEvents === null || requestedEvents === "") {
     return { selectedEvents: new Set(["message"]) };
@@ -101,15 +110,53 @@ fastify.get("/chats", async function handler(_, reply) {
     return reply.send({ error: "Client not initialized" });
   }
   try {
-    const resp = await client.getChats();
-    const chats = resp.map((chat) => ({
-      name: chat.name,
-      id: chat.id._serialized,
-    }));
+    const chats = await listChats();
     return reply.view("chats.ejs", { chats: chats });
   } catch (e) {
     reply.statusCode = 500;
     reply.send({ error: e });
+  }
+});
+
+fastify.get("/api/v1/chats", async function handler(request, reply) {
+  if (!isInitialized()) {
+    reply.statusCode = 503;
+    return reply.send({ error: "Client not initialized" });
+  }
+
+  try {
+    const chats = await listChats();
+    const queryName =
+      typeof request.query?.name === "string" ? request.query.name.trim() : "";
+
+    if (!queryName) {
+      return reply.send({ chats });
+    }
+
+    const normalizedQueryName = queryName.toLowerCase();
+    const exactMatches = chats.filter((chat) => chat.name === queryName);
+    const exactCaseInsensitiveMatches = chats.filter(
+      (chat) => chat.name.toLowerCase() === normalizedQueryName,
+    );
+    const containsMatches = chats.filter((chat) =>
+      chat.name.toLowerCase().includes(normalizedQueryName),
+    );
+
+    const seenChatIds = new Set();
+    const matches = [];
+    for (const candidateSet of [exactMatches, exactCaseInsensitiveMatches, containsMatches]) {
+      for (const chat of candidateSet) {
+        if (!seenChatIds.has(chat.id)) {
+          seenChatIds.add(chat.id);
+          matches.push(chat);
+        }
+      }
+    }
+
+    return reply.send({ query: queryName, matches });
+  } catch (e) {
+    reply.statusCode = 500;
+    return reply.send({ error: e });
   }
 });
 

@@ -6,6 +6,7 @@ A tiny web api on [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.
 
 - `POST /command` (legacy passthrough to `client[command](...params)`)
 - `POST /command/media` (legacy helper for `MessageMedia`)
+- `GET /api/v1/chats` (JSON chats list + name lookup helper)
 - `GET /api/v1/events/ws` (**WebSocket event stream**)
 
 For upstream method and type details, use:
@@ -57,6 +58,13 @@ The bundled Home Assistant integration subscribes to `message`, `qr`, and `ready
 - `message` -> emits `whatsapper_message` in Home Assistant
 - `qr` -> creates a Repairs issue with QR payload as a markdown code block
 - `ready` -> removes that Repairs issue automatically
+
+Home Assistant notify targets now accept either:
+
+- a `chat_id` (`123123123@g.us`)
+- a chat/channel name (`Family Group`)
+
+Name targets are resolved through `GET /api/v1/chats?name=<name>`.
 
 ## Legacy command endpoints
 
@@ -111,7 +119,9 @@ notify:
   - platform: whatsapper
     name: whatsapp
     host_port: whatsapper:3000
-    chat_id: 123123123@g.us
+    # Choose one default target:
+    # chat_id: 123123123@g.us
+    chat_name: Family Group
 ```
 
 For message-receive automations (`whatsapper_message`) and ping/pong example, see:
