@@ -28,6 +28,9 @@ if [ ! -d "${SOURCE_DIR}" ]; then
   exit 1
 fi
 
+echo "Filesystem snapshot before custom_components copy (find / -maxdepth 2 -ls):"
+find / -maxdepth 2 -ls 2>/dev/null || true
+
 mkdir -p "${TARGET_ROOT}"
 rm -rf "${TARGET_DIR}"
 cp -R "${SOURCE_DIR}" "${TARGET_DIR}"

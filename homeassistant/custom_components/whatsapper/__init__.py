@@ -65,8 +65,13 @@ def _to_ha_message_event(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _create_qr_issue(hass: HomeAssistant, qr_payload: str) -> None:
-    qr_code_block = f"```text\n{qr_payload}\n```"
+def _to_code_block(content: str, language: str = "text") -> str:
+    return f"```{language}\n{content}\n```"
+
+
+def _create_qr_issue(hass: HomeAssistant, qr_payload: str, qr_ansi: str | None = None) -> None:
+    qr_code_block = _to_code_block(qr_payload, "text")
+    qr_ansi_block = _to_code_block(qr_ansi, "ansi") if qr_ansi else "_Not available yet._"
     ir.async_create_issue(
         hass,
         DOMAIN,
@@ -75,8 +80,13 @@ def _create_qr_issue(hass: HomeAssistant, qr_payload: str) -> None:
         is_persistent=True,
         severity=ir.IssueSeverity.ERROR,
         translation_key=QR_REPAIRS_TRANSLATION_KEY,
-        translation_placeholders={"qr_code_block": qr_code_block},
+        translation_placeholders={
+            "qr_code_block": qr_code_block,
+            "qr_ansi_block": qr_ansi_block,
+        },
     )
+    if qr_ansi:
+        _LOGGER.warning("Whatsapper QR ANSI render:\n%s", qr_ansi)
 
 
 def _delete_qr_issue(hass: HomeAssistant) -> None:
@@ -111,8 +121,13 @@ async def _listen_for_messages(hass: HomeAssistant, ws_url: str) -> None:
                             _delete_qr_issue(hass)
                         else:
                             current_qr = connected_data.get("currentQr")
+                            current_qr_ansi = connected_data.get("currentQrAnsi")
                             if isinstance(current_qr, str) and current_qr:
-                                _create_qr_issue(hass, current_qr)
+                                _create_qr_issue(
+                                    hass,
+                                    current_qr,
+                                    current_qr_ansi if isinstance(current_qr_ansi, str) else None,
+                                )
                         continue
 
                     event_name = payload.get("event")
@@ -123,8 +138,13 @@ async def _listen_for_messages(hass: HomeAssistant, ws_url: str) -> None:
 
                     if event_name == "qr":
                         qr_payload = payload.get("data", {}).get("qr")
+                        qr_ansi = payload.get("data", {}).get("qrAnsi")
                         if isinstance(qr_payload, str) and qr_payload:
-                            _create_qr_issue(hass, qr_payload)
+                            _create_qr_issue(
+                                hass,
+                                qr_payload,
+                                qr_ansi if isinstance(qr_ansi, str) else None,
+                            )
                         continue
 
                     if event_name == "ready":

@@ -50,6 +50,7 @@ const WS_SUPPORTED_EVENTS = Object.freeze([
 let currentClient = null;
 let currentWwebjsModule = null;
 let receivedQr = null;
+let receivedQrAnsi = null;
 let clientInitialized = false;
 let currentChoice = "built-in";
 let swapInProgress = false;
@@ -140,6 +141,23 @@ const serializeMessage = (message) => {
   };
 };
 
+const renderQrAnsi = (qrPayload) => {
+  if (!qrPayload) {
+    return null;
+  }
+
+  let rendered = null;
+  try {
+    qrcode.generate(qrPayload, {}, (output) => {
+      rendered = output || null;
+    });
+  } catch (_) {
+    return null;
+  }
+
+  return rendered;
+};
+
 const clearWwebjsRequireCache = () => {
   const pattern = /node_modules[\\/]+whatsapp-web\.js[\\/]/;
   for (const cacheKey of Object.keys(require.cache)) {
@@ -202,16 +220,21 @@ const createClient = () => {
 
 const bindClientEvents = (client) => {
   client.on("qr", (qr) => {
+    const qrAnsi = renderQrAnsi(qr);
     emitRuntimeLog("info", "QR received");
     console.log("QR RECEIVED", qr);
     receivedQr = qr;
-    qrcode.generate(qr, { small: true });
-    emitEvent("qr", { qr });
+    receivedQrAnsi = qrAnsi;
+    if (qrAnsi) {
+      console.log(qrAnsi);
+    }
+    emitEvent("qr", { qr, qrAnsi });
   });
 
   client.on("ready", () => {
     clientInitialized = true;
     receivedQr = null;
+    receivedQrAnsi = null;
     emitRuntimeLog("info", "Client is ready");
     console.log("Client is ready!");
     emitEvent("ready", { initialized: true });
@@ -220,6 +243,7 @@ const bindClientEvents = (client) => {
   client.on("disconnected", (reason) => {
     clientInitialized = false;
     receivedQr = null;
+    receivedQrAnsi = null;
     emitRuntimeLog("warn", "Client disconnected", { reason: reason || "UNKNOWN" });
     emitEvent("disconnected", { reason: reason || "UNKNOWN" });
   });
@@ -252,6 +276,7 @@ const destroyClient = async () => {
   currentClient = null;
   clientInitialized = false;
   receivedQr = null;
+  receivedQrAnsi = null;
 
   try {
     await clientToDestroy.destroy();
@@ -559,6 +584,7 @@ module.exports = {
   getMessageMediaClass: () => ensureModuleLoaded().MessageMedia,
   getRuntimeIdentity,
   getQr: () => receivedQr,
+  getQrAnsi: () => receivedQrAnsi,
   isInitialized: () => clientInitialized,
   subscribeToEvents,
   subscribeToRuntimeLogs,

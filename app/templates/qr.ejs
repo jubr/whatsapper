@@ -4,6 +4,11 @@
   <h2>WhatsApp login QR payload</h2>
   <p>Use this payload in tools that render WhatsApp pairing QR codes.</p>
   <pre><code><%= qr %></code></pre>
+  <% if (qrAnsi) { %>
+    <h3>ANSI terminal rendering</h3>
+    <p>Copy into an ANSI-capable terminal for an inline QR preview.</p>
+    <pre><code><%= qrAnsi %></code></pre>
+  <% } %>
   <p>
     <a href="https://qrcode.show/<%= encodeURIComponent(qr) %>" target="_blank" rel="noopener noreferrer">
       Show qrcode

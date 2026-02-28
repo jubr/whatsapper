@@ -5,6 +5,7 @@ const {
   getClient,
   getMessageMediaClass,
   getQr,
+  getQrAnsi,
   isInitialized,
   subscribeToEvents,
   subscribeToRuntimeLogs,
@@ -157,6 +158,7 @@ fastify.get("/hotswap", function handler(_, reply) {
 fastify.get("/qr", function handler(_, reply) {
   reply.view("qr.ejs", {
     qr: getQr(),
+    qrAnsi: getQrAnsi(),
     initialized: isInitialized(),
     ...getUiVersions(),
   });
@@ -327,6 +329,7 @@ fastify.after(() => {
             availableEvents: Array.from(supportedWsEvents),
             clientInitialized: isInitialized(),
             currentQr: getQr(),
+            currentQrAnsi: getQrAnsi(),
           },
         }),
       );
