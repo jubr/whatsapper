@@ -55,15 +55,15 @@ No additional image tagging scheme is required; runtime state is tracked in `/da
 
 Published images are pushed per arch to:
 
-- `ghcr.io/jubr/ha-app-whatsapper-amd64`
-- `ghcr.io/jubr/ha-app-whatsapper-aarch64`
+- clean builds: `ghcr.io/jubr/ha-app-whatsapper-amd64`, `ghcr.io/jubr/ha-app-whatsapper-aarch64`
+- dirty builds: `ghcr.io/jubr/ha-app-whatsappur-amd64`, `ghcr.io/jubr/ha-app-whatsappur-aarch64`
 
 Tag format:
 
 - clean tag build: `x.y.z`
-- commits after tag: `x.y.z+N-sha` (example: `2.0.0+3-a1b2`)
+- commits after tag: `x.y.z-N-sha` (example: `2.0.0-3-a1b2`)
 
-Dirty build behavior (`x.y.z+N-sha`):
+Dirty build behavior (`x.y.z-N-sha`):
 
 - runtime app name defaults to `whatsappur`
 - runtime port defaults to `3001`

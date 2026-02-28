@@ -1,8 +1,9 @@
 #!/bin/sh
 set -eu
 
+APP_BUILD_VERSION_VALUE="${APP_BUILD_VERSION:-}"
 IS_DIRTY_BUILD=0
-if printf '%s' "${APP_BUILD_VERSION:-}" | grep -q '+'; then
+if [ -n "${APP_BUILD_VERSION_VALUE}" ] && ! printf '%s' "${APP_BUILD_VERSION_VALUE}" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
   IS_DIRTY_BUILD=1
 fi
 

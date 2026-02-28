@@ -91,7 +91,7 @@ In compose, this is shared with Home Assistant as:
 
 which matches Home Assistant custom integration expectations.
 
-On dirty builds (`x.y.z+N-sha`), the integration is installed as:
+On dirty builds (`x.y.z-N-sha`), the integration is installed as:
 
 ```text
 /config/custom_components/whatsappur

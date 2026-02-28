@@ -18,7 +18,9 @@ const MAX_REFS_PER_TYPE = Number(process.env.WWEBJS_REF_LIST_LIMIT || 100);
 const LOG_BACKLOG_LIMIT = 500;
 const BUNDLED_DEP_SPEC =
   packageJson.dependencies?.["whatsapp-web.js"] || process.env.WWEBJS_BUILD_REF || "latest";
-const IS_DIRTY_BUILD = String(process.env.APP_BUILD_VERSION || "").includes("+");
+const APP_BUILD_VERSION = String(process.env.APP_BUILD_VERSION || "").trim();
+const IS_DIRTY_BUILD =
+  APP_BUILD_VERSION.length > 0 && !/^v?\d+\.\d+\.\d+$/.test(APP_BUILD_VERSION);
 const DEFAULT_RUNTIME_NAME = IS_DIRTY_BUILD ? "whatsappur" : "whatsapper";
 const DEFAULT_RUNTIME_PORT = IS_DIRTY_BUILD ? 3001 : 3000;
 const APP_RUNTIME_NAME = (process.env.APP_RUNTIME_NAME || DEFAULT_RUNTIME_NAME).trim();
