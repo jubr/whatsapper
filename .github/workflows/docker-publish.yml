@@ -166,9 +166,8 @@ jobs:
               printf '%s\n' 'image: "ghcr.io/jubr/ha-app-whatsappur-{arch}"'
               printf '%s\n' 'url: "https://github.com/jubr/whatsapper/blob/main/docs/homeassistant-integration.md"'
               printf '%s\n' 'ingress: true'
-              printf "%s\n" "ingress_path: ''"
               printf '%s\n' 'ingress_port: 3001'
-              printf '%s\n' 'ingress_entry: /'
+              printf "%s\n" "ingress_entry: ''"
               printf '%s\n' 'ingress_stream: true'
               printf '%s\n' 'panel_icon: mdi:whatsapp'
               printf '%s\n' 'panel_title: Whatsappur'
@@ -201,9 +200,8 @@ jobs:
               printf '%s\n' 'image: "ghcr.io/jubr/ha-app-whatsapper-{arch}"'
               printf '%s\n' 'url: "https://github.com/jubr/whatsapper/blob/main/docs/homeassistant-integration.md"'
               printf '%s\n' 'ingress: true'
-              printf "%s\n" "ingress_path: ''"
               printf '%s\n' 'ingress_port: 3000'
-              printf '%s\n' 'ingress_entry: /'
+              printf "%s\n" "ingress_entry: ''"
               printf '%s\n' 'ingress_stream: true'
               printf '%s\n' 'panel_icon: mdi:whatsapp'
               printf '%s\n' 'panel_title: Whatsapper'
