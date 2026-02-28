@@ -1,6 +1,7 @@
 FROM zenika/alpine-chrome:124-with-puppeteer
 
 ARG WWEBJS_REF=""
+ARG APP_BUILD_VERSION=""
 
 ADD app /workspace/app
 ADD homeassistant /workspace/homeassistant
@@ -13,6 +14,7 @@ RUN chmod +x /workspace/docker/entrypoint.sh && npm install && \
 
 ENV HA_CUSTOM_COMPONENTS_PATH=/ha-custom-components
 ENV WWEBJS_BUILD_REF=${WWEBJS_REF}
+ENV APP_BUILD_VERSION=${APP_BUILD_VERSION}
 EXPOSE 3000
 
 VOLUME /data

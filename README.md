@@ -53,6 +53,16 @@ docker build --build-arg WWEBJS_REF=main -t whatsapper:local .
 
 No additional image tagging scheme is required; runtime state is tracked in `/data`.
 
+Published images are pushed per arch to:
+
+- `ghcr.io/jubr/ha-app-whatsapper-amd64`
+- `ghcr.io/jubr/ha-app-whatsapper-aarch64`
+
+Tag format:
+
+- clean tag build: `x.y.z`
+- commits after tag: `x.y.z+N-sha` (example: `2.0.0+3-a1b2`)
+
 ### Runtime hot swap UI
 
 Open `/hotswap` (ingress-safe page) to:
@@ -156,6 +166,6 @@ For message-receive automations (`whatsapper_message`) and ping/pong example, se
 - [DOCS.md](./DOCS.md)
 - [docs/homeassistant-integration.md](./docs/homeassistant-integration.md)
 
-## Push on docker hub (for me to remember)
+## Manual GHCR push example
 
-`docker buildx build --push --platform linux/amd64 --tag baldarn/whatsapper:TAG --tag baldarn/whatsapper:latest .`
+`docker buildx build --push --platform linux/amd64 --build-arg APP_BUILD_VERSION=2.0.0 --tag ghcr.io/jubr/ha-app-whatsapper-amd64:2.0.0 .`

@@ -31,8 +31,11 @@ const websocketSubscriptions = new Set();
 const hotswapWsSubscriptions = new Set();
 const supportedWsEvents = new Set(WS_SUPPORTED_EVENTS);
 const isSocketOpen = (socket) => socket.readyState === socket.constructor.OPEN;
-const WHATSAPP_WEB_JS_VERSION =
-  require("whatsapp-web.js/package.json").version || "unknown";
+const APP_VERSION = process.env.APP_BUILD_VERSION || require("../package.json").version || "unknown";
+const getUiVersions = () => ({
+  whatsappWebJsVersion: getRuntimeState().installedVersion || "unknown",
+  appVersion: APP_VERSION,
+});
 
 const ensureActiveClient = () => {
   if (!isInitialized()) {
@@ -139,18 +142,18 @@ fastify.addHook("onClose", (_instance, done) => {
 });
 
 fastify.get("/", function handler(_, reply) {
-  reply.view("root.ejs", { whatsappWebJsVersion: WHATSAPP_WEB_JS_VERSION });
+  reply.view("root.ejs", getUiVersions());
 });
 
 fastify.get("/hotswap", function handler(_, reply) {
-  reply.view("hotswap.ejs", { whatsappWebJsVersion: WHATSAPP_WEB_JS_VERSION });
+  reply.view("hotswap.ejs", getUiVersions());
 });
 
 fastify.get("/qr", function handler(_, reply) {
   reply.view("qr.ejs", {
     qr: getQr(),
     initialized: isInitialized(),
-    whatsappWebJsVersion: WHATSAPP_WEB_JS_VERSION,
+    ...getUiVersions(),
   });
 });
 
