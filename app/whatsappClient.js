@@ -25,6 +25,12 @@ const IS_DIRTY_BUILD =
 const DEFAULT_RUNTIME_NAME = IS_DIRTY_BUILD ? "whatsappur" : "whatsapper";
 const DEFAULT_RUNTIME_PORT = IS_DIRTY_BUILD ? 3001 : 3000;
 const APP_RUNTIME_NAME = (process.env.APP_RUNTIME_NAME || DEFAULT_RUNTIME_NAME).trim();
+const normalizeQrConsoleStyle = (rawStyle) => (rawStyle === "block" ? "block" : "single");
+const ACTIVE_QR_CONSOLE_STYLE = normalizeQrConsoleStyle(
+  String(process.env.WWEBJS_QR_CONSOLE_STYLE || "single")
+    .trim()
+    .toLowerCase(),
+);
 
 const parseRuntimePort = () => {
   const raw = process.env.APP_PORT;
@@ -52,6 +58,8 @@ let currentClient = null;
 let currentWwebjsModule = null;
 let receivedQr = null;
 let receivedQrConsole = null;
+let receivedQrConsoleSingle = null;
+let receivedQrConsoleBlock = null;
 let clientInitialized = false;
 let currentChoice = "built-in";
 let swapInProgress = false;
@@ -142,7 +150,7 @@ const serializeMessage = (message) => {
   };
 };
 
-const renderQrConsole = (qrPayload) => {
+const renderQrConsole = (qrPayload, { darkCell, lightCell }) => {
   if (!qrPayload) {
     return null;
   }
@@ -152,16 +160,14 @@ const renderQrConsole = (qrPayload) => {
     model.addData(qrPayload);
     model.make();
 
-    const black = "##";
-    const white = "  ";
     const width = model.getModuleCount();
-    const horizontalBorder = white.repeat(width + 2);
+    const horizontalBorder = lightCell.repeat(width + 2);
     let rendered = `${horizontalBorder}\n`;
 
     for (const row of model.modules) {
-      rendered += white;
-      rendered += row.map((isBlack) => (isBlack ? black : white)).join("");
-      rendered += `${white}\n`;
+      rendered += lightCell;
+      rendered += row.map((isBlack) => (isBlack ? darkCell : lightCell)).join("");
+      rendered += `${lightCell}\n`;
     }
     rendered += horizontalBorder;
     return rendered;
@@ -169,6 +175,9 @@ const renderQrConsole = (qrPayload) => {
     return null;
   }
 };
+
+const getActiveQrConsole = (singleStyle, blockStyle) =>
+  ACTIVE_QR_CONSOLE_STYLE === "block" ? blockStyle : singleStyle;
 
 const clearWwebjsRequireCache = () => {
   const pattern = /node_modules[\\/]+whatsapp-web\.js[\\/]/;
@@ -232,21 +241,33 @@ const createClient = () => {
 
 const bindClientEvents = (client) => {
   client.on("qr", (qr) => {
-    const qrConsole = renderQrConsole(qr);
+    const qrConsoleSingle = renderQrConsole(qr, { darkCell: "#", lightCell: " " });
+    const qrConsoleBlock = renderQrConsole(qr, { darkCell: "##", lightCell: "  " });
+    const qrConsole = getActiveQrConsole(qrConsoleSingle, qrConsoleBlock);
     emitRuntimeLog("info", "QR received");
     console.log("QR RECEIVED", qr);
     receivedQr = qr;
     receivedQrConsole = qrConsole;
+    receivedQrConsoleSingle = qrConsoleSingle;
+    receivedQrConsoleBlock = qrConsoleBlock;
     if (qrConsole) {
       console.log(qrConsole);
     }
-    emitEvent("qr", { qr, qrConsole });
+    emitEvent("qr", {
+      qr,
+      qrConsole,
+      qrConsoleSingle,
+      qrConsoleBlock,
+      qrConsoleStyle: ACTIVE_QR_CONSOLE_STYLE,
+    });
   });
 
   client.on("ready", () => {
     clientInitialized = true;
     receivedQr = null;
     receivedQrConsole = null;
+    receivedQrConsoleSingle = null;
+    receivedQrConsoleBlock = null;
     emitRuntimeLog("info", "Client is ready");
     console.log("Client is ready!");
     emitEvent("ready", { initialized: true });
@@ -256,6 +277,8 @@ const bindClientEvents = (client) => {
     clientInitialized = false;
     receivedQr = null;
     receivedQrConsole = null;
+    receivedQrConsoleSingle = null;
+    receivedQrConsoleBlock = null;
     emitRuntimeLog("warn", "Client disconnected", { reason: reason || "UNKNOWN" });
     emitEvent("disconnected", { reason: reason || "UNKNOWN" });
   });
@@ -289,6 +312,8 @@ const destroyClient = async () => {
   clientInitialized = false;
   receivedQr = null;
   receivedQrConsole = null;
+  receivedQrConsoleSingle = null;
+  receivedQrConsoleBlock = null;
 
   try {
     await clientToDestroy.destroy();
@@ -597,6 +622,9 @@ module.exports = {
   getRuntimeIdentity,
   getQr: () => receivedQr,
   getQrConsole: () => receivedQrConsole,
+  getQrConsoleSingle: () => receivedQrConsoleSingle,
+  getQrConsoleBlock: () => receivedQrConsoleBlock,
+  getQrConsoleStyle: () => ACTIVE_QR_CONSOLE_STYLE,
   isInitialized: () => clientInitialized,
   subscribeToEvents,
   subscribeToRuntimeLogs,

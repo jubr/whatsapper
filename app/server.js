@@ -1,11 +1,15 @@
 "use strict";
 
 const path = require("path");
+const QRCode = require("qrcode");
 const {
   getClient,
   getMessageMediaClass,
   getQr,
   getQrConsole,
+  getQrConsoleSingle,
+  getQrConsoleBlock,
+  getQrConsoleStyle,
   isInitialized,
   subscribeToEvents,
   subscribeToRuntimeLogs,
@@ -49,6 +53,27 @@ const getUiVersions = () => ({
   whatsappWebJsVersion: getRuntimeState().installedVersion || "unknown",
   appVersion: APP_VERSION,
 });
+
+const buildQrImageDataUrl = async (qrPayload) => {
+  if (!qrPayload) {
+    return null;
+  }
+
+  try {
+    return await QRCode.toDataURL(qrPayload, {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 360,
+      color: {
+        dark: "#111111",
+        light: "#ffffff",
+      },
+    });
+  } catch (error) {
+    fastify.log.warn({ error }, "Failed to render QR image");
+    return null;
+  }
+};
 
 const ensureActiveClient = () => {
   if (!isInitialized()) {
@@ -162,10 +187,16 @@ fastify.get("/hotswap", function handler(_, reply) {
   reply.view("hotswap.ejs", getUiVersions());
 });
 
-fastify.get("/qr", function handler(_, reply) {
+fastify.get("/qr", async function handler(_, reply) {
+  const qrPayload = getQr();
+  const qrImageDataUrl = await buildQrImageDataUrl(qrPayload);
   reply.view("qr.ejs", {
-    qr: getQr(),
+    qr: qrPayload,
+    qrImageDataUrl,
     qrConsole: getQrConsole(),
+    qrConsoleSingle: getQrConsoleSingle(),
+    qrConsoleBlock: getQrConsoleBlock(),
+    qrConsoleStyle: getQrConsoleStyle(),
     initialized: isInitialized(),
     ...getUiVersions(),
   });
@@ -337,6 +368,9 @@ fastify.after(() => {
             clientInitialized: isInitialized(),
             currentQr: getQr(),
             currentQrConsole: getQrConsole(),
+            currentQrConsoleSingle: getQrConsoleSingle(),
+            currentQrConsoleBlock: getQrConsoleBlock(),
+            currentQrConsoleStyle: getQrConsoleStyle(),
           },
         }),
       );

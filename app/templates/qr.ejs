@@ -55,6 +55,38 @@
     letter-spacing: 0;
   }
 
+  .qr-image {
+    display: block;
+    max-width: 100%;
+    width: min(26rem, 100%);
+    border: 1px solid #2d3b42;
+    border-radius: 0.55rem;
+    background: #fff;
+    padding: 0.6rem;
+    box-sizing: border-box;
+    margin-bottom: 0.9rem;
+  }
+
+  .console-controls {
+    margin: 0.55rem 0 0.55rem;
+  }
+
+  .console-controls button {
+    border: 1px solid #2d3b42;
+    border-radius: 0.45rem;
+    background: #0f1519;
+    color: var(--wa-text);
+    padding: 0.35rem 0.65rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    margin-right: 0.4rem;
+  }
+
+  .console-controls button.active {
+    border-color: var(--wa-green);
+    color: #6cf09f;
+  }
+
   a {
     color: var(--wa-green);
     text-decoration: none;
@@ -72,8 +104,54 @@
 
   <% if (qr) { %>
     <h2>WhatsApp login QR</h2>
-    <p class="meta">ASCII console-style QR block (monospaced) for pairing.</p>
-    <pre class="qr-console"><code><%= qrConsole || "QR console rendering is not available yet." %></code></pre>
+    <% if (qrImageDataUrl) { %>
+      <img class="qr-image" src="<%= qrImageDataUrl %>" alt="WhatsApp login QR image" />
+    <% } else { %>
+      <p class="meta">QR image renderer is not available yet.</p>
+    <% } %>
+    <p class="meta">ASCII console-style rendering (monospaced) for terminal copy/paste.</p>
+    <div class="console-controls">
+      <button id="consoleSingleButton" type="button">Single #</button>
+      <button id="consoleBlockButton" type="button">Block ##</button>
+    </div>
+    <pre class="qr-console"><code id="qrConsoleOutput"><%= qrConsole || "QR console rendering is not available yet." %></code></pre>
+    <script id="qrConsoleVariants" type="application/json"><%- JSON.stringify({
+      single: qrConsoleSingle || qrConsole || "",
+      block: qrConsoleBlock || qrConsole || "",
+      active: qrConsoleStyle || "single",
+    }) %></script>
+    <script>
+      (function () {
+        const variantsEl = document.getElementById("qrConsoleVariants");
+        const outputEl = document.getElementById("qrConsoleOutput");
+        const singleButton = document.getElementById("consoleSingleButton");
+        const blockButton = document.getElementById("consoleBlockButton");
+        if (!variantsEl || !outputEl || !singleButton || !blockButton) return;
+
+        let variants = null;
+        try {
+          variants = JSON.parse(variantsEl.textContent || "{}");
+        } catch (_) {
+          variants = {};
+        }
+
+        const getVariantText = (style) => {
+          if (style === "block") return variants.block || variants.single || "";
+          return variants.single || variants.block || "";
+        };
+
+        const render = (style) => {
+          outputEl.textContent = getVariantText(style) || "QR console rendering is not available yet.";
+          singleButton.classList.toggle("active", style === "single");
+          blockButton.classList.toggle("active", style === "block");
+        };
+
+        singleButton.addEventListener("click", () => render("single"));
+        blockButton.addEventListener("click", () => render("block"));
+
+        render(variants.active === "block" ? "block" : "single");
+      })();
+    </script>
     <p>
       <a href="https://qrcode.show/<%= encodeURIComponent(qr) %>" target="_blank" rel="noopener noreferrer">
         Open external QR renderer

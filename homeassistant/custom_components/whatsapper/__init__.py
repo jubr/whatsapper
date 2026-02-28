@@ -123,6 +123,10 @@ async def _listen_for_messages(hass: HomeAssistant, ws_url: str) -> None:
                             current_qr = connected_data.get("currentQr")
                             current_qr_console = connected_data.get("currentQrConsole")
                             if not isinstance(current_qr_console, str):
+                                current_qr_console = connected_data.get("currentQrConsoleSingle")
+                            if not isinstance(current_qr_console, str):
+                                current_qr_console = connected_data.get("currentQrConsoleBlock")
+                            if not isinstance(current_qr_console, str):
                                 current_qr_console = connected_data.get("currentQrAnsi")
                             if isinstance(current_qr, str) and current_qr:
                                 _create_qr_issue(
@@ -141,6 +145,10 @@ async def _listen_for_messages(hass: HomeAssistant, ws_url: str) -> None:
                     if event_name == "qr":
                         qr_payload = payload.get("data", {}).get("qr")
                         qr_console = payload.get("data", {}).get("qrConsole")
+                        if not isinstance(qr_console, str):
+                            qr_console = payload.get("data", {}).get("qrConsoleSingle")
+                        if not isinstance(qr_console, str):
+                            qr_console = payload.get("data", {}).get("qrConsoleBlock")
                         if not isinstance(qr_console, str):
                             qr_console = payload.get("data", {}).get("qrAnsi")
                         if isinstance(qr_payload, str) and qr_payload:
