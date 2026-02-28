@@ -4,7 +4,8 @@ const { randomUUID } = require("crypto");
 const { spawn } = require("child_process");
 const fs = require("fs/promises");
 const path = require("path");
-const qrcode = require("qrcode-terminal");
+const QRCodeModel = require("qrcode-terminal/vendor/QRCode");
+const QRErrorCorrectLevel = require("qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel");
 
 const packageJson = require("../package.json");
 
@@ -146,16 +147,27 @@ const renderQrConsole = (qrPayload) => {
     return null;
   }
 
-  let rendered = null;
   try {
-    qrcode.generate(qrPayload, { small: true }, (output) => {
-      rendered = output || null;
-    });
+    const model = new QRCodeModel(-1, QRErrorCorrectLevel.L);
+    model.addData(qrPayload);
+    model.make();
+
+    const black = "##";
+    const white = "  ";
+    const width = model.getModuleCount();
+    const horizontalBorder = white.repeat(width + 2);
+    let rendered = `${horizontalBorder}\n`;
+
+    for (const row of model.modules) {
+      rendered += white;
+      rendered += row.map((isBlack) => (isBlack ? black : white)).join("");
+      rendered += `${white}\n`;
+    }
+    rendered += horizontalBorder;
+    return rendered;
   } catch (_) {
     return null;
   }
-
-  return rendered;
 };
 
 const clearWwebjsRequireCache = () => {

@@ -2,7 +2,7 @@
   "issues": {
     "qr_required": {
       "title": "WhatsApp login required",
-      "description": "Scan the WhatsApp QR payload below with your phone to reconnect this account.\n\n{qr_code_block}\n\nConsole block rendering:\n\n{qr_console_block}\n\nAfter a successful link, this issue is removed automatically."
+      "description": "Scan the WhatsApp QR payload below with your phone to reconnect this account.\n\n{qr_code_block}\n\nASCII console block rendering:\n\n{qr_console_block}\n\nAfter a successful link, this issue is removed automatically."
     }
   }
 }

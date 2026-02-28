@@ -72,7 +72,7 @@
 
   <% if (qr) { %>
     <h2>WhatsApp login QR</h2>
-    <p class="meta">Console-style QR block (monospaced) for pairing.</p>
+    <p class="meta">ASCII console-style QR block (monospaced) for pairing.</p>
     <pre class="qr-console"><code><%= qrConsole || "QR console rendering is not available yet." %></code></pre>
     <p>
       <a href="https://qrcode.show/<%= encodeURIComponent(qr) %>" target="_blank" rel="noopener noreferrer">
