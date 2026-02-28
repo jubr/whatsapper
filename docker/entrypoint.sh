@@ -35,12 +35,8 @@ run_diagnostic() {
   "$@" || echo "[startup-fs] Command failed but startup will continue: $*" >&2
 }
 
-echo "Filesystem snapshots before custom_components copy:"
-run_diagnostic "find / -maxdepth 2 -ls" find / -maxdepth 2 -ls
-run_diagnostic "root directories (find / -mindepth 1 -maxdepth 1 -type d -print)" \
-  find / -mindepth 1 -maxdepth 1 -type d -print
-run_diagnostic "each root directory + one level of children" \
-  sh -c 'for root_dir in /*; do [ -d "$root_dir" ] || continue; echo "## ${root_dir}"; find "$root_dir" -mindepth 1 -maxdepth 1 -print || true; done'
+echo "Filesystem snapshot before custom_components copy:"
+run_diagnostic "ls -l /homeassistant/custom_components" ls -l /homeassistant/custom_components
 
 mkdir -p "${TARGET_ROOT}"
 rm -rf "${TARGET_DIR}"

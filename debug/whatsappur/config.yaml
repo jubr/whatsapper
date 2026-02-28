@@ -11,6 +11,7 @@ arch:
 image: "ghcr.io/jubr/ha-app-whatsappur-{arch}"
 url: "https://github.com/jubr/whatsapper/blob/main/docs/homeassistant-integration.md"
 ingress: true
+ingress_path: ''
 ingress_port: 3001
 ingress_entry: /
 ingress_stream: true
