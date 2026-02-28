@@ -29,6 +29,13 @@ fastify.register(require("@fastify/view"), {
   root: path.join(__dirname, "templates"),
 });
 
+fastify.addHook("onRequest", (request, _reply, done) => {
+  if (typeof request.raw.url === "string" && request.raw.url.startsWith("//")) {
+    request.raw.url = request.raw.url.replace(/^\/+/, "/");
+  }
+  done();
+});
+
 const websocketSubscriptions = new Set();
 const hotswapWsSubscriptions = new Set();
 const supportedWsEvents = new Set(WS_SUPPORTED_EVENTS);
