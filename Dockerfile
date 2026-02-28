@@ -23,6 +23,5 @@ EXPOSE 3000
 EXPOSE 3001
 
 VOLUME /data
-VOLUME /homeassistant/custom_components
 
 ENTRYPOINT ["/workspace/docker/entrypoint.sh"]
