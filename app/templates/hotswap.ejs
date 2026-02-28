@@ -1,37 +1,139 @@
-<h1><%= appName %>: hot swap <code>whatsapp-web.js</code></h1>
+<style>
+  :root {
+    color-scheme: dark;
+    --wa-bg: #0b141a;
+    --wa-card: #111b21;
+    --wa-card-2: #1f2c33;
+    --wa-text: #e9edef;
+    --wa-muted: #aebac1;
+    --wa-green: #25d366;
+    --wa-green-2: #128c7e;
+  }
 
-<p>
-  Bundled version at build time: <strong><%= whatsappWebJsVersion %></strong>
-  |
-  App version: <strong><%= appVersion %></strong>
-  |
-  Runtime port: <strong><%= appPort %></strong>
-</p>
-<p><a href=".">Back</a></p>
+  body {
+    margin: 0;
+    background: radial-gradient(circle at top right, #123326 0%, var(--wa-bg) 45%);
+    color: var(--wa-text);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
 
-<div style="margin-bottom: 1rem;">
-  <label for="refSelect"><strong>Target ref</strong></label><br />
-  <select id="refSelect" style="min-width: 28rem;"></select>
-  <button id="applyButton">Apply</button>
-  <button id="refreshButton">Refresh refs</button>
-</div>
+  .page {
+    max-width: 72rem;
+    margin: 2rem auto;
+    padding: 1.5rem;
+    border-radius: 0.9rem;
+    background: linear-gradient(180deg, var(--wa-card) 0%, var(--wa-card-2) 100%);
+    border: 1px solid #233138;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
 
-<div id="runtimeState" style="margin-bottom: 1rem; font-family: monospace;"></div>
+  .meta {
+    color: var(--wa-muted);
+  }
 
-<h2>Progress and connection status</h2>
-<div
-  id="logBox"
-  style="
-    border: 1px solid #888;
+  .toolbar {
+    margin-bottom: 1rem;
+  }
+
+  .toolbar select,
+  .toolbar button {
+    border: 1px solid #2d3b42;
+    border-radius: 0.45rem;
+    background: #0f1519;
+    color: var(--wa-text);
+    padding: 0.45rem 0.65rem;
+    font-size: 0.95rem;
+  }
+
+  .toolbar select {
+    min-width: 28rem;
+  }
+
+  .toolbar button {
+    cursor: pointer;
+    margin-left: 0.35rem;
+  }
+
+  .toolbar button:hover:not(:disabled) {
+    border-color: var(--wa-green);
+    color: #6cf09f;
+  }
+
+  .toolbar button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .runtime-state {
+    margin-bottom: 1rem;
+    font-family:
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      "Liberation Mono",
+      "Courier New",
+      monospace;
+    color: #d7e5dc;
+  }
+
+  .log-box {
+    border: 1px solid #2d3b42;
     padding: 0.75rem;
-    background: #111;
-    color: #ddd;
+    background: #0f1519;
+    color: #d7e5dc;
     height: 24rem;
     overflow-y: auto;
     white-space: pre-wrap;
-    font-family: monospace;
-  "
-></div>
+    font-family:
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      "Liberation Mono",
+      "Courier New",
+      monospace;
+    border-radius: 0.55rem;
+  }
+
+  a {
+    color: var(--wa-green);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  a:hover {
+    color: #6cf09f;
+    text-decoration: underline;
+  }
+</style>
+
+<div class="page">
+  <h1><%= appName %>: hot swap <code>whatsapp-web.js</code></h1>
+
+  <p class="meta">
+    Bundled version at build time: <strong><%= whatsappWebJsVersion %></strong>
+    |
+    App version: <strong><%= appVersion %></strong>
+    |
+    Runtime port: <strong><%= appPort %></strong>
+  </p>
+  <p><a href=".">Back</a></p>
+
+  <div class="toolbar">
+    <label for="refSelect"><strong>Target ref</strong></label><br />
+    <select id="refSelect"></select>
+    <button id="applyButton">Apply</button>
+    <button id="refreshButton">Refresh refs</button>
+  </div>
+
+  <div id="runtimeState" class="runtime-state"></div>
+
+  <h2>Progress and connection status</h2>
+  <div id="logBox" class="log-box"></div>
+</div>
 
 <script>
   (function () {
@@ -70,11 +172,11 @@
     const appendLogLine = (line, level) => {
       const el = document.createElement("div");
       if (level === "error") {
-        el.style.color = "#ff7b7b";
+        el.style.color = "#ff8f8f";
       } else if (level === "warn") {
-        el.style.color = "#ffd37b";
+        el.style.color = "#f8d66d";
       } else if (level === "info") {
-        el.style.color = "#9ad1ff";
+        el.style.color = "#86efac";
       } else {
         el.style.color = "#ddd";
       }

@@ -1,8 +1,81 @@
+<style>
+  :root {
+    color-scheme: dark;
+    --wa-bg: #0b141a;
+    --wa-card: #111b21;
+    --wa-card-2: #1f2c33;
+    --wa-text: #e9edef;
+    --wa-muted: #aebac1;
+    --wa-green: #25d366;
+  }
 
-<h1>Chats with chat-id</h1>
+  body {
+    margin: 0;
+    background: radial-gradient(circle at top right, #123326 0%, var(--wa-bg) 45%);
+    color: var(--wa-text);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
 
-<ul>
-<% chats.forEach(function(chat){ %>
-  <li><%= chat.name %>: <%= chat.id %></li>
-<% }); %>
-</ul>
+  .page {
+    max-width: 72rem;
+    margin: 2rem auto;
+    padding: 1.5rem;
+    border-radius: 0.9rem;
+    background: linear-gradient(180deg, var(--wa-card) 0%, var(--wa-card-2) 100%);
+    border: 1px solid #233138;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+  }
+
+  th,
+  td {
+    border-bottom: 1px solid #2d3b42;
+    padding: 0.55rem 0.45rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    color: var(--wa-muted);
+    font-weight: 600;
+  }
+
+  td.chat-id {
+    font-family:
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      "Liberation Mono",
+      "Courier New",
+      monospace;
+    color: #d7e5dc;
+  }
+</style>
+
+<div class="page">
+  <h1>Chats with chat-id</h1>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Chat ID</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% chats.forEach(function(chat){ %>
+        <tr>
+          <td><%= chat.name %></td>
+          <td class="chat-id"><%= chat.id %></td>
+        </tr>
+      <% }); %>
+    </tbody>
+  </table>
+</div>

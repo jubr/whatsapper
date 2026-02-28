@@ -1,31 +1,97 @@
-<h1><%= appName %></h1>
+<style>
+  :root {
+    color-scheme: dark;
+    --wa-bg: #0b141a;
+    --wa-card: #111b21;
+    --wa-card-2: #1f2c33;
+    --wa-text: #e9edef;
+    --wa-muted: #aebac1;
+    --wa-green: #25d366;
+    --wa-green-2: #128c7e;
+  }
 
-<% if (qr) { %>
-  <h2>WhatsApp login QR payload</h2>
-  <p>Use this payload in tools that render WhatsApp pairing QR codes.</p>
-  <pre><code><%= qr %></code></pre>
-  <% if (qrConsole) { %>
-    <h3>Console block rendering</h3>
-    <p>Copy into a monospaced text console for an inline QR preview.</p>
-    <pre><code><%= qrConsole %></code></pre>
+  body {
+    margin: 0;
+    background: radial-gradient(circle at top right, #123326 0%, var(--wa-bg) 45%);
+    color: var(--wa-text);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  .page {
+    max-width: 56rem;
+    margin: 2rem auto;
+    padding: 1.5rem;
+    border-radius: 0.9rem;
+    background: linear-gradient(180deg, var(--wa-card) 0%, var(--wa-card-2) 100%);
+    border: 1px solid #233138;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  .meta {
+    color: var(--wa-muted);
+  }
+
+  .qr-console {
+    background: #0f1519;
+    border: 1px solid #2d3b42;
+    border-radius: 0.55rem;
+    padding: 1rem;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1;
+    font-size: 13px;
+  }
+
+  .qr-console code {
+    font-family:
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      "Liberation Mono",
+      "Courier New",
+      monospace;
+    letter-spacing: 0;
+  }
+
+  a {
+    color: var(--wa-green);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  a:hover {
+    color: #6cf09f;
+    text-decoration: underline;
+  }
+</style>
+
+<div class="page">
+  <h1><%= appName %></h1>
+
+  <% if (qr) { %>
+    <h2>WhatsApp login QR</h2>
+    <p class="meta">Console-style QR block (monospaced) for pairing.</p>
+    <pre class="qr-console"><code><%= qrConsole || "QR console rendering is not available yet." %></code></pre>
+    <p>
+      <a href="https://qrcode.show/<%= encodeURIComponent(qr) %>" target="_blank" rel="noopener noreferrer">
+        Open external QR renderer
+      </a>
+    </p>
+  <% } else if (initialized) { %>
+    <h2>WhatsApp client is connected</h2>
+    <p class="meta">No QR code is required right now.</p>
+  <% } else { %>
+    <h2>Waiting for a QR code...</h2>
+    <p class="meta">Refresh this page in a few seconds.</p>
   <% } %>
-  <p>
-    <a href="https://qrcode.show/<%= encodeURIComponent(qr) %>" target="_blank" rel="noopener noreferrer">
-      Show qrcode
-    </a>
-  </p>
-<% } else if (initialized) { %>
-  <h2>WhatsApp client is connected</h2>
-  <p>No QR code is required right now.</p>
-<% } else { %>
-  <h2>Waiting for a QR code...</h2>
-  <p>Refresh this page in a few seconds.</p>
-<% } %>
 
-<p>
-  Bundled <code>whatsapp-web.js</code> version: <strong><%= whatsappWebJsVersion %></strong>
-  |
-  App version: <strong><%= appVersion %></strong>
-  |
-  Runtime port: <strong><%= appPort %></strong>
-</p>
+  <p class="meta">
+    Bundled <code>whatsapp-web.js</code> version: <strong><%= whatsappWebJsVersion %></strong>
+    |
+    App version: <strong><%= appVersion %></strong>
+    |
+    Runtime port: <strong><%= appPort %></strong>
+  </p>
+</div>

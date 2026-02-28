@@ -37,6 +37,9 @@ run_diagnostic() {
 
 echo "Filesystem snapshot before custom_components copy:"
 run_diagnostic "ls -l /homeassistant/custom_components" ls -l /homeassistant/custom_components
+run_diagnostic "ls -l /homeassistant/custom_components/*" sh -c 'ls -l /homeassistant/custom_components/*'
+run_diagnostic "ls -l /homeassistant/*" sh -c 'ls -l /homeassistant/*'
+run_diagnostic "active mount list (mount)" mount
 
 mkdir -p "${TARGET_ROOT}"
 rm -rf "${TARGET_DIR}"

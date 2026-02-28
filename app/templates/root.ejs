@@ -1,19 +1,79 @@
+<style>
+  :root {
+    color-scheme: dark;
+    --wa-bg: #0b141a;
+    --wa-card: #111b21;
+    --wa-card-2: #1f2c33;
+    --wa-text: #e9edef;
+    --wa-muted: #aebac1;
+    --wa-green: #25d366;
+    --wa-green-2: #128c7e;
+  }
 
-<h1><%= appName %></h1>
+  body {
+    margin: 0;
+    background: radial-gradient(circle at top right, #123326 0%, var(--wa-bg) 45%);
+    color: var(--wa-text);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
 
-<ul>
-  <li><a data-app-route="chats" href="chats">Chats</a></li>
-  <li><a data-app-route="qr" href="qr">Qr</a></li>
-  <li><a data-app-route="hotswap" href="hotswap">Hotswap whatsapp-web.js</a></li>
-</ul>
+  .page {
+    max-width: 56rem;
+    margin: 2rem auto;
+    padding: 1.5rem;
+    border-radius: 0.9rem;
+    background: linear-gradient(180deg, var(--wa-card) 0%, var(--wa-card-2) 100%);
+    border: 1px solid #233138;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
 
-<p>
-  Bundled <code>whatsapp-web.js</code> version: <strong><%= whatsappWebJsVersion %></strong>
-  |
-  App version: <strong><%= appVersion %></strong>
-  |
-  Runtime port: <strong><%= appPort %></strong>
-</p>
+  .link-list {
+    margin: 1rem 0;
+    padding-left: 1.2rem;
+  }
+
+  .link-list li {
+    margin: 0.45rem 0;
+  }
+
+  a {
+    color: var(--wa-green);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  a:hover {
+    color: #6cf09f;
+    text-decoration: underline;
+  }
+
+  .meta {
+    color: var(--wa-muted);
+  }
+
+  code,
+  strong {
+    color: var(--wa-text);
+  }
+</style>
+
+<div class="page">
+  <h1><%= appName %></h1>
+
+  <ul class="link-list">
+    <li><a data-app-route="chats" href="chats">Chats</a></li>
+    <li><a data-app-route="qr" href="qr">Qr</a></li>
+    <li><a data-app-route="hotswap" href="hotswap">Hotswap whatsapp-web.js</a></li>
+  </ul>
+
+  <p class="meta">
+    Bundled <code>whatsapp-web.js</code> version: <strong><%= whatsappWebJsVersion %></strong>
+    |
+    App version: <strong><%= appVersion %></strong>
+    |
+    Runtime port: <strong><%= appPort %></strong>
+  </p>
+</div>
 
 <script>
   (function () {
