@@ -24,6 +24,8 @@ fastify.register(require("@fastify/view"), {
 const websocketSubscriptions = new Set();
 const supportedWsEvents = new Set(WS_SUPPORTED_EVENTS);
 const isSocketOpen = (socket) => socket.readyState === socket.constructor.OPEN;
+const WHATSAPP_WEB_JS_VERSION =
+  require("whatsapp-web.js/package.json").version || "unknown";
 
 const listChats = async () => {
   const resp = await client.getChats();
@@ -98,11 +100,15 @@ fastify.addHook("onClose", (_instance, done) => {
 });
 
 fastify.get("/", function handler(_, reply) {
-  reply.view("root.ejs");
+  reply.view("root.ejs", { whatsappWebJsVersion: WHATSAPP_WEB_JS_VERSION });
 });
 
 fastify.get("/qr", function handler(_, reply) {
-  reply.view("qr.ejs", { qr: getQr(), initialized: isInitialized() });
+  reply.view("qr.ejs", {
+    qr: getQr(),
+    initialized: isInitialized(),
+    whatsappWebJsVersion: WHATSAPP_WEB_JS_VERSION,
+  });
 });
 
 fastify.get("/chats", async function handler(_, reply) {

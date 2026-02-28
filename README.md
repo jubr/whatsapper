@@ -34,6 +34,7 @@ When opened through Home Assistant ingress, the same page shows:
 - QR payload in a code block for copy/paste
 - direct link to render the QR
 - connected/no-QR-needed status when the session is already authenticated
+- bundled `whatsapp-web.js` version below the QR/status section
 
 ## WebSocket events (`/api/v1/events/ws`)
 
