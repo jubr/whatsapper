@@ -1,7 +1,7 @@
 name: "Whatsappur"
 slug: "whatsappur"
 description: "Expose whatsapp-web.js via HTTP and websocket API with Home Assistant integration files bundled."
-version: "2.0.0-0-82c3"
+version: "2.0.0-0-f911"
 startup: services
 boot: auto
 init: false
@@ -11,6 +11,7 @@ arch:
 image: "ghcr.io/jubr/ha-app-whatsappur-{arch}"
 url: "https://github.com/jubr/whatsapper/blob/main/docs/homeassistant-integration.md"
 ingress: true
+ingress_path: ''
 ingress_port: 3001
 ingress_entry: /
 ingress_stream: true
@@ -25,6 +26,6 @@ map:
     read_only: false
 environment:
   HA_CUSTOM_COMPONENTS_PATH: /homeassistant/custom_components
-  APP_BUILD_VERSION: "2.0.0-0-82c3"
+  APP_BUILD_VERSION: "2.0.0-0-f911"
   APP_RUNTIME_NAME: whatsappur
   APP_PORT: "3001"
