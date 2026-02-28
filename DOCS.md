@@ -83,6 +83,12 @@ Use `/qr` through ingress or direct access to:
 Use `/hotswap` to switch `whatsapp-web.js` refs at runtime.
 The page lists tags/branches sorted by commit datetime (desc), marks built-in, persists selection, and shows progress via websocket logs.
 
+Dirty builds (`x.y.z+N-sha`) default to:
+
+- app name: `whatsappur`
+- port: `3001`
+- HA integration domain: `whatsappur`
+
 ## Example automation: `whatsapper-ping(.*)` -> `whatsapper-pong$1`
 
 This catches incoming pings in any chat/channel and replies in the same target.

@@ -48,7 +48,7 @@ GET ws://<host>:3000/api/v1/events/ws?events=message
 
 The bundled custom integration opens the websocket and emits a Home Assistant event:
 
-- `event_type: whatsapper_message`
+- `event_type: <domain>_message` (`whatsapper_message` on stable, `whatsappur_message` on dirty builds)
 - Creates a Repairs issue (`qr_required`) when WhatsApp emits a `qr` event
 - Removes that Repairs issue automatically on `ready`
 - Resolves notify targets from chat/channel names to `chat_id` via `/api/v1/chats`
@@ -90,6 +90,15 @@ In compose, this is shared with Home Assistant as:
 ```
 
 which matches Home Assistant custom integration expectations.
+
+On dirty builds (`x.y.z+N-sha`), the integration is installed as:
+
+```text
+/config/custom_components/whatsappur
+```
+
+so it can run next to stable `whatsapper`.
+Dirty builds also default to app port `3001` (use host mapping `4001:3001` in compose-style setups).
 
 ## Runtime library hot swap
 

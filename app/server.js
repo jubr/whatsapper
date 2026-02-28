@@ -10,6 +10,7 @@ const {
   subscribeToRuntimeLogs,
   getRuntimeLogs,
   getRuntimeState,
+  getRuntimeIdentity,
   listGithubRefs,
   swapToChoice,
   getStartupPromise,
@@ -31,8 +32,12 @@ const websocketSubscriptions = new Set();
 const hotswapWsSubscriptions = new Set();
 const supportedWsEvents = new Set(WS_SUPPORTED_EVENTS);
 const isSocketOpen = (socket) => socket.readyState === socket.constructor.OPEN;
+const runtimeIdentity = getRuntimeIdentity();
 const APP_VERSION = process.env.APP_BUILD_VERSION || require("../package.json").version || "unknown";
 const getUiVersions = () => ({
+  appName: runtimeIdentity.appName,
+  appPort: runtimeIdentity.appPort,
+  dirtyBuild: runtimeIdentity.dirtyBuild,
   whatsappWebJsVersion: getRuntimeState().installedVersion || "unknown",
   appVersion: APP_VERSION,
 });
@@ -426,7 +431,7 @@ fastify.after(() => {
   );
 });
 
-fastify.listen({ port: 3000, host: "0.0.0.0" }, (err) => {
+fastify.listen({ port: runtimeIdentity.appPort, host: "0.0.0.0" }, (err) => {
   if (err) {
     fastify.log.error(err);
     process.exit(1);

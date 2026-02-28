@@ -65,11 +65,21 @@ jobs:
             RELEASE_VERSION="${BASE_VERSION}+0-${SHA4}"
           fi
 
+          if [[ "$RELEASE_VERSION" == *"+"* ]]; then
+            APP_RUNTIME_NAME="whatsappur"
+            APP_RUNTIME_PORT="3001"
+          else
+            APP_RUNTIME_NAME="whatsapper"
+            APP_RUNTIME_PORT="3000"
+          fi
+
           IMAGE_REPO="ghcr.io/jubr/ha-app-whatsapper-${{ matrix.arch }}"
 
           echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
           echo "image_repo=$IMAGE_REPO" >> "$GITHUB_OUTPUT"
           echo "full_tag=${IMAGE_REPO}:${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "app_runtime_name=$APP_RUNTIME_NAME" >> "$GITHUB_OUTPUT"
+          echo "app_runtime_port=$APP_RUNTIME_PORT" >> "$GITHUB_OUTPUT"
 
       - name: Build and push image
         uses: docker/build-push-action@v5
@@ -80,4 +90,6 @@ jobs:
           tags: ${{ steps.version.outputs.full_tag }}
           build-args: |
             APP_BUILD_VERSION=${{ steps.version.outputs.release_version }}
+            APP_RUNTIME_NAME=${{ steps.version.outputs.app_runtime_name }}
+            APP_PORT=${{ steps.version.outputs.app_runtime_port }}
             WWEBJS_REF=${{ vars.WWEBJS_REF }}

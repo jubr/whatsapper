@@ -18,6 +18,24 @@ const MAX_REFS_PER_TYPE = Number(process.env.WWEBJS_REF_LIST_LIMIT || 100);
 const LOG_BACKLOG_LIMIT = 500;
 const BUNDLED_DEP_SPEC =
   packageJson.dependencies?.["whatsapp-web.js"] || process.env.WWEBJS_BUILD_REF || "latest";
+const IS_DIRTY_BUILD = String(process.env.APP_BUILD_VERSION || "").includes("+");
+const DEFAULT_RUNTIME_NAME = IS_DIRTY_BUILD ? "whatsappur" : "whatsapper";
+const DEFAULT_RUNTIME_PORT = IS_DIRTY_BUILD ? 3001 : 3000;
+const APP_RUNTIME_NAME = (process.env.APP_RUNTIME_NAME || DEFAULT_RUNTIME_NAME).trim();
+
+const parseRuntimePort = () => {
+  const raw = process.env.APP_PORT;
+  if (!raw) {
+    return DEFAULT_RUNTIME_PORT;
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    return DEFAULT_RUNTIME_PORT;
+  }
+  return parsed;
+};
+
+const APP_RUNTIME_PORT = parseRuntimePort();
 
 const WS_SUPPORTED_EVENTS = Object.freeze([
   "message",
@@ -310,6 +328,15 @@ const getRuntimeState = () => ({
   currentChoice,
   bundledDependencySpec: BUNDLED_DEP_SPEC,
   installedVersion: getInstalledVersion(),
+  appName: APP_RUNTIME_NAME,
+  appPort: APP_RUNTIME_PORT,
+  dirtyBuild: IS_DIRTY_BUILD,
+});
+
+const getRuntimeIdentity = () => ({
+  appName: APP_RUNTIME_NAME,
+  appPort: APP_RUNTIME_PORT,
+  dirtyBuild: IS_DIRTY_BUILD,
 });
 
 const mapWithConcurrency = async (items, maxConcurrency, mapper) => {
@@ -496,6 +523,9 @@ const startupPromise = (async () => {
   emitRuntimeLog("info", "Whatsapper runtime bootstrap started", {
     bundledDependencySpec: BUNDLED_DEP_SPEC,
     installedVersion: installedAtBoot,
+    appName: APP_RUNTIME_NAME,
+    appPort: APP_RUNTIME_PORT,
+    dirtyBuild: IS_DIRTY_BUILD,
   });
 
   const persistedChoice = await loadPersistedChoice();
@@ -525,6 +555,7 @@ module.exports = {
   WS_SUPPORTED_EVENTS,
   getClient: () => currentClient,
   getMessageMediaClass: () => ensureModuleLoaded().MessageMedia,
+  getRuntimeIdentity,
   getQr: () => receivedQr,
   isInitialized: () => clientInitialized,
   subscribeToEvents,

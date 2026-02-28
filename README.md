@@ -63,6 +63,21 @@ Tag format:
 - clean tag build: `x.y.z`
 - commits after tag: `x.y.z+N-sha` (example: `2.0.0+3-a1b2`)
 
+Dirty build behavior (`x.y.z+N-sha`):
+
+- runtime app name defaults to `whatsappur`
+- runtime port defaults to `3001`
+- bundled Home Assistant integration is installed as `custom_components/whatsappur`
+
+This allows running dirty builds in parallel with stable `whatsapper` instances.
+
+For side-by-side compose usage, use a separate host mapping for dirty builds, for example:
+
+```yaml
+ports:
+  - 4001:3001
+```
+
 ### Runtime hot swap UI
 
 Open `/hotswap` (ingress-safe page) to:

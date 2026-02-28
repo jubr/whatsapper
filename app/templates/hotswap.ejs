@@ -1,9 +1,11 @@
-<h1>Hot swap <code>whatsapp-web.js</code></h1>
+<h1><%= appName %>: hot swap <code>whatsapp-web.js</code></h1>
 
 <p>
   Bundled version at build time: <strong><%= whatsappWebJsVersion %></strong>
   |
   App version: <strong><%= appVersion %></strong>
+  |
+  Runtime port: <strong><%= appPort %></strong>
 </p>
 <p><a href="/">Back</a></p>
 
@@ -81,10 +83,13 @@
       }
 
       runtimeStateEl.textContent = [
+        `appName=${runtimeState.appName}`,
+        `appPort=${runtimeState.appPort}`,
         `currentChoice=${runtimeState.currentChoice}`,
         `installedVersion=${runtimeState.installedVersion}`,
         `initialized=${runtimeState.initialized}`,
         `swapping=${runtimeState.swapping}`,
+        `dirtyBuild=${runtimeState.dirtyBuild}`,
       ].join(" | ");
 
       applyButton.disabled = Boolean(runtimeState.swapping);
