@@ -2,9 +2,9 @@
 <h1><%= appName %></h1>
 
 <ul>
-  <li><a href="chats">Chats</a></li>
-  <li><a href="qr">Qr</a></li>
-  <li><a href="hotswap">Hotswap whatsapp-web.js</a></li>
+  <li><a data-app-route="chats" href="chats">Chats</a></li>
+  <li><a data-app-route="qr" href="qr">Qr</a></li>
+  <li><a data-app-route="hotswap" href="hotswap">Hotswap whatsapp-web.js</a></li>
 </ul>
 
 <p>
@@ -14,3 +14,19 @@
   |
   Runtime port: <strong><%= appPort %></strong>
 </p>
+
+<script>
+  (function () {
+    const knownRoutes = new Set(["chats", "qr", "hotswap"]);
+    const segments = (location.pathname || "/").split("/").filter(Boolean);
+    if (segments.length > 0 && knownRoutes.has(segments[segments.length - 1])) {
+      segments.pop();
+    }
+    const basePath = segments.length === 0 ? "/" : `/${segments.join("/")}/`;
+
+    document.querySelectorAll("a[data-app-route]").forEach((anchor) => {
+      const route = anchor.getAttribute("data-app-route");
+      anchor.href = `${basePath}${route}`;
+    });
+  })();
+</script>
