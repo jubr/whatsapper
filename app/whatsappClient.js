@@ -50,7 +50,7 @@ const WS_SUPPORTED_EVENTS = Object.freeze([
 let currentClient = null;
 let currentWwebjsModule = null;
 let receivedQr = null;
-let receivedQrAnsi = null;
+let receivedQrConsole = null;
 let clientInitialized = false;
 let currentChoice = "built-in";
 let swapInProgress = false;
@@ -141,14 +141,14 @@ const serializeMessage = (message) => {
   };
 };
 
-const renderQrAnsi = (qrPayload) => {
+const renderQrConsole = (qrPayload) => {
   if (!qrPayload) {
     return null;
   }
 
   let rendered = null;
   try {
-    qrcode.generate(qrPayload, {}, (output) => {
+    qrcode.generate(qrPayload, { small: true }, (output) => {
       rendered = output || null;
     });
   } catch (_) {
@@ -220,21 +220,21 @@ const createClient = () => {
 
 const bindClientEvents = (client) => {
   client.on("qr", (qr) => {
-    const qrAnsi = renderQrAnsi(qr);
+    const qrConsole = renderQrConsole(qr);
     emitRuntimeLog("info", "QR received");
     console.log("QR RECEIVED", qr);
     receivedQr = qr;
-    receivedQrAnsi = qrAnsi;
-    if (qrAnsi) {
-      console.log(qrAnsi);
+    receivedQrConsole = qrConsole;
+    if (qrConsole) {
+      console.log(qrConsole);
     }
-    emitEvent("qr", { qr, qrAnsi });
+    emitEvent("qr", { qr, qrConsole });
   });
 
   client.on("ready", () => {
     clientInitialized = true;
     receivedQr = null;
-    receivedQrAnsi = null;
+    receivedQrConsole = null;
     emitRuntimeLog("info", "Client is ready");
     console.log("Client is ready!");
     emitEvent("ready", { initialized: true });
@@ -243,7 +243,7 @@ const bindClientEvents = (client) => {
   client.on("disconnected", (reason) => {
     clientInitialized = false;
     receivedQr = null;
-    receivedQrAnsi = null;
+    receivedQrConsole = null;
     emitRuntimeLog("warn", "Client disconnected", { reason: reason || "UNKNOWN" });
     emitEvent("disconnected", { reason: reason || "UNKNOWN" });
   });
@@ -276,7 +276,7 @@ const destroyClient = async () => {
   currentClient = null;
   clientInitialized = false;
   receivedQr = null;
-  receivedQrAnsi = null;
+  receivedQrConsole = null;
 
   try {
     await clientToDestroy.destroy();
@@ -584,7 +584,7 @@ module.exports = {
   getMessageMediaClass: () => ensureModuleLoaded().MessageMedia,
   getRuntimeIdentity,
   getQr: () => receivedQr,
-  getQrAnsi: () => receivedQrAnsi,
+  getQrConsole: () => receivedQrConsole,
   isInitialized: () => clientInitialized,
   subscribeToEvents,
   subscribeToRuntimeLogs,
