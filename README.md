@@ -8,6 +8,7 @@ A tiny web api on [whatsapp-web.js](https://github.com/pedroslopez/whatsapp-web.
 - `POST /command/media` (legacy helper for `MessageMedia`)
 - `GET /api/v1/chats` (JSON chats list + name lookup helper)
 - `GET /api/v1/events/ws` (**WebSocket event stream**)
+- `GET /hotswap` (runtime `whatsapp-web.js` hot swap UI)
 
 For upstream method and type details, use:
 
@@ -35,6 +36,31 @@ When opened through Home Assistant ingress, the same page shows:
 - direct link to render the QR
 - connected/no-QR-needed status when the session is already authenticated
 - bundled `whatsapp-web.js` version below the QR/status section
+
+### Build-time quick startup selection
+
+You can bake a ref at image build time (tag or branch) to reduce first-run swap work:
+
+```shell
+docker build --build-arg WWEBJS_REF=v1.34.6 -t whatsapper:local .
+```
+
+or:
+
+```shell
+docker build --build-arg WWEBJS_REF=main -t whatsapper:local .
+```
+
+No additional image tagging scheme is required; runtime state is tracked in `/data`.
+
+### Runtime hot swap UI
+
+Open `/hotswap` (ingress-safe page) to:
+
+- browse GitHub tags and branches (sorted by commit datetime descending)
+- see built-in choice marked as `built-in`
+- switch versions at runtime and persist selection
+- watch progress and connection status in a scrolling log div via websocket
 
 ## WebSocket events (`/api/v1/events/ws`)
 

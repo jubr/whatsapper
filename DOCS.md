@@ -23,6 +23,8 @@ For the full WhatsApp API surface, use the upstream docs directly:
    - removes the issue automatically when WhatsApp reports `ready`
 5. Chat name lookup for notify targets:
    - resolves channel/chat names to `chat_id` via `GET /api/v1/chats?name=...`
+6. Runtime hot swap page:
+   - `/hotswap` with websocket progress log, connection status, and GitHub refs list
 
 ## Differences vs raw `whatsapp-web.js`
 
@@ -75,6 +77,11 @@ Use `/qr` through ingress or direct access to:
 - view the current QR payload in a `<pre><code>` block
 - open an external renderer via `qrcode.show`
 - see a connected/no-QR-needed status when already linked
+
+## Ingress hot swap page
+
+Use `/hotswap` to switch `whatsapp-web.js` refs at runtime.
+The page lists tags/branches sorted by commit datetime (desc), marks built-in, persists selection, and shows progress via websocket logs.
 
 ## Example automation: `whatsapper-ping(.*)` -> `whatsapper-pong$1`
 

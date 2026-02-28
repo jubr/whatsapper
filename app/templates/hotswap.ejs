@@ -1,0 +1,235 @@
+<h1>Hot swap <code>whatsapp-web.js</code></h1>
+
+<p>Bundled version at build time: <strong><%= whatsappWebJsVersion %></strong></p>
+<p><a href="/">Back</a></p>
+
+<div style="margin-bottom: 1rem;">
+  <label for="refSelect"><strong>Target ref</strong></label><br />
+  <select id="refSelect" style="min-width: 28rem;"></select>
+  <button id="applyButton">Apply</button>
+  <button id="refreshButton">Refresh refs</button>
+</div>
+
+<div id="runtimeState" style="margin-bottom: 1rem; font-family: monospace;"></div>
+
+<h2>Progress and connection status</h2>
+<div
+  id="logBox"
+  style="
+    border: 1px solid #888;
+    padding: 0.75rem;
+    background: #111;
+    color: #ddd;
+    height: 24rem;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family: monospace;
+  "
+></div>
+
+<script>
+  (function () {
+    const refSelect = document.getElementById("refSelect");
+    const applyButton = document.getElementById("applyButton");
+    const refreshButton = document.getElementById("refreshButton");
+    const runtimeStateEl = document.getElementById("runtimeState");
+    const logBox = document.getElementById("logBox");
+
+    let runtimeState = null;
+    let refsPayload = null;
+    let runtimeWs = null;
+    let hasRenderedSnapshotLogs = false;
+
+    const toDateString = (value) => {
+      if (!value) return "n/a";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? value : date.toISOString();
+    };
+
+    const appendLogLine = (line, level) => {
+      const el = document.createElement("div");
+      if (level === "error") {
+        el.style.color = "#ff7b7b";
+      } else if (level === "warn") {
+        el.style.color = "#ffd37b";
+      } else if (level === "info") {
+        el.style.color = "#9ad1ff";
+      } else {
+        el.style.color = "#ddd";
+      }
+      el.textContent = line;
+      logBox.appendChild(el);
+      logBox.scrollTop = logBox.scrollHeight;
+    };
+
+    const appendStructuredLog = (entry) => {
+      const stamp = toDateString(entry.timestamp);
+      const level = entry.level || "info";
+      const message = entry.message || JSON.stringify(entry);
+      appendLogLine(`[${stamp}] [${level}] ${message}`, level);
+    };
+
+    const renderRuntimeState = () => {
+      if (!runtimeState) {
+        runtimeStateEl.textContent = "Loading runtime state...";
+        applyButton.disabled = true;
+        return;
+      }
+
+      runtimeStateEl.textContent = [
+        `currentChoice=${runtimeState.currentChoice}`,
+        `installedVersion=${runtimeState.installedVersion}`,
+        `initialized=${runtimeState.initialized}`,
+        `swapping=${runtimeState.swapping}`,
+      ].join(" | ");
+
+      applyButton.disabled = Boolean(runtimeState.swapping);
+      refSelect.disabled = Boolean(runtimeState.swapping);
+    };
+
+    const renderRefs = () => {
+      if (!refsPayload) {
+        return;
+      }
+
+      const previousChoice = runtimeState?.currentChoice || refSelect.value;
+      refSelect.innerHTML = "";
+
+      const allOptions = [refsPayload.builtIn, ...(refsPayload.refs || [])];
+
+      for (const ref of allOptions) {
+        const option = document.createElement("option");
+        option.value = ref.choice;
+
+        if (ref.type === "built-in") {
+          option.textContent = `[built-in][marked] ${ref.label}`;
+        } else {
+          option.textContent = `[${ref.type}] ${ref.label} | ${toDateString(ref.updatedAt)}`;
+        }
+
+        if (ref.choice === previousChoice) {
+          option.selected = true;
+        }
+        refSelect.appendChild(option);
+      }
+    };
+
+    const handleSnapshot = (payload) => {
+      runtimeState = payload.state || runtimeState;
+      renderRuntimeState();
+
+      if (!hasRenderedSnapshotLogs && Array.isArray(payload.logs)) {
+        logBox.innerHTML = "";
+        payload.logs.forEach((entry) => appendStructuredLog(entry));
+        hasRenderedSnapshotLogs = true;
+      }
+    };
+
+    const fetchRuntimeState = async () => {
+      const response = await fetch("/api/v1/wwebjs/runtime");
+      const payload = await response.json();
+      runtimeState = payload;
+      renderRuntimeState();
+      renderRefs();
+    };
+
+    const fetchRefs = async (refresh = false) => {
+      const response = await fetch(`/api/v1/wwebjs/refs${refresh ? "?refresh=1" : ""}`);
+      const payload = await response.json();
+      refsPayload = payload;
+      renderRefs();
+    };
+
+    const openRuntimeSocket = () => {
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      runtimeWs = new WebSocket(`${protocol}://${location.host}/api/v1/wwebjs/ws`);
+
+      runtimeWs.addEventListener("open", () => {
+        appendLogLine("[ws] Connected to runtime progress stream", "info");
+      });
+
+      runtimeWs.addEventListener("close", () => {
+        appendLogLine("[ws] Disconnected from runtime stream. Reconnecting...", "warn");
+        setTimeout(openRuntimeSocket, 2000);
+      });
+
+      runtimeWs.addEventListener("error", () => {
+        appendLogLine("[ws] Runtime stream error", "error");
+      });
+
+      runtimeWs.addEventListener("message", (event) => {
+        let payload;
+        try {
+          payload = JSON.parse(event.data);
+        } catch (_) {
+          appendLogLine(`[ws] ${event.data}`, "info");
+          return;
+        }
+
+        if (payload.type === "snapshot") {
+          handleSnapshot(payload);
+          return;
+        }
+
+        if (payload.type === "refs") {
+          refsPayload = payload.payload;
+          renderRefs();
+          return;
+        }
+
+        if (payload.type === "log") {
+          appendStructuredLog(payload);
+          return;
+        }
+      });
+    };
+
+    applyButton.addEventListener("click", async () => {
+      const choice = refSelect.value;
+      if (!choice) return;
+
+      appendLogLine(`[ui] Applying choice: ${choice}`, "info");
+      applyButton.disabled = true;
+
+      try {
+        const response = await fetch("/api/v1/wwebjs/hotswap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ choice }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          appendLogLine(`[ui] Hotswap failed: ${payload.error || response.status}`, "error");
+        } else {
+          runtimeState = payload.result || runtimeState;
+          renderRuntimeState();
+          appendLogLine(`[ui] Hotswap request completed for ${choice}`, "info");
+        }
+      } catch (error) {
+        appendLogLine(`[ui] Hotswap request error: ${error.message}`, "error");
+      } finally {
+        await fetchRuntimeState();
+      }
+    });
+
+    refreshButton.addEventListener("click", async () => {
+      appendLogLine("[ui] Refreshing refs from GitHub...", "info");
+      try {
+        await fetchRefs(true);
+        if (runtimeWs && runtimeWs.readyState === runtimeWs.OPEN) {
+          runtimeWs.send(JSON.stringify({ type: "refresh_refs" }));
+        }
+      } catch (error) {
+        appendLogLine(`[ui] Ref refresh failed: ${error.message}`, "error");
+      }
+    });
+
+    (async () => {
+      await fetchRuntimeState();
+      await fetchRefs(false);
+      openRuntimeSocket();
+    })().catch((error) => {
+      appendLogLine(`[ui] Startup error: ${error.message}`, "error");
+    });
+  })();
+</script>
