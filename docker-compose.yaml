@@ -7,7 +7,7 @@ services:
     volumes:
       - ./app:/workspace/app
       - whatsapper:/data
-      - ha-custom-components:/ha-custom-components
+      - ha-custom-components:/homeassistant/custom_components
     ports:
       - 4000:3000
 

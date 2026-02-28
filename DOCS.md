@@ -15,7 +15,7 @@ For the full WhatsApp API surface, use the upstream docs directly:
 1. A websocket event stream endpoint:
    - `ws://<whatsapper-host>/api/v1/events/ws?events=message`
 2. Bundled Home Assistant custom integration source:
-   - copied to `/config/custom_components/whatsapper` (through `HA_CUSTOM_COMPONENTS_PATH`)
+   - copied to `/homeassistant/custom_components/whatsapper` (through `HA_CUSTOM_COMPONENTS_PATH`)
 3. A Home Assistant event bridge:
    - incoming WhatsApp messages become HA events of type `whatsapper_message`
 4. A Repairs issue lifecycle for QR:

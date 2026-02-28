@@ -14,7 +14,7 @@ COPY package*.json .
 RUN chmod +x /workspace/docker/entrypoint.sh && npm install && \
     if [ -n "$WWEBJS_REF" ]; then npm install --no-save "github:pedroslopez/whatsapp-web.js#$WWEBJS_REF"; fi
 
-ENV HA_CUSTOM_COMPONENTS_PATH=/ha-custom-components
+ENV HA_CUSTOM_COMPONENTS_PATH=/homeassistant/custom_components
 ENV WWEBJS_BUILD_REF=${WWEBJS_REF}
 ENV APP_BUILD_VERSION=${APP_BUILD_VERSION}
 ENV APP_RUNTIME_NAME=${APP_RUNTIME_NAME}
@@ -23,6 +23,6 @@ EXPOSE 3000
 EXPOSE 3001
 
 VOLUME /data
-VOLUME /ha-custom-components
+VOLUME /homeassistant/custom_components
 
 ENTRYPOINT ["/workspace/docker/entrypoint.sh"]

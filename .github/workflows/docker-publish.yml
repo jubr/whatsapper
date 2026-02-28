@@ -179,7 +179,7 @@ jobs:
               printf '%s\n' '  - type: homeassistant_config'
               printf '%s\n' '    read_only: false'
               printf '%s\n' 'environment:'
-              printf '%s\n' '  HA_CUSTOM_COMPONENTS_PATH: /config/custom_components'
+              printf '%s\n' '  HA_CUSTOM_COMPONENTS_PATH: /homeassistant/custom_components'
               printf '  APP_BUILD_VERSION: "%s"\n' "${RELEASE_VERSION}"
               printf '%s\n' '  APP_RUNTIME_NAME: whatsappur'
               printf '%s\n' '  APP_PORT: "3001"'
@@ -213,7 +213,7 @@ jobs:
               printf '%s\n' '  - type: homeassistant_config'
               printf '%s\n' '    read_only: false'
               printf '%s\n' 'environment:'
-              printf '%s\n' '  HA_CUSTOM_COMPONENTS_PATH: /config/custom_components'
+              printf '%s\n' '  HA_CUSTOM_COMPONENTS_PATH: /homeassistant/custom_components'
             } > "${TARGET_FILE}"
           fi
 

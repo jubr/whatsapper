@@ -24,4 +24,4 @@ map:
   - type: homeassistant_config
     read_only: false
 environment:
-  HA_CUSTOM_COMPONENTS_PATH: /config/custom_components
+  HA_CUSTOM_COMPONENTS_PATH: /homeassistant/custom_components

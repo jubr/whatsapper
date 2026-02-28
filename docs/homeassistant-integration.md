@@ -80,13 +80,13 @@ The container copies integration files from:
 to:
 
 ```text
-${HA_CUSTOM_COMPONENTS_PATH:-/ha-custom-components}/whatsapper
+${HA_CUSTOM_COMPONENTS_PATH:-/homeassistant/custom_components}/whatsapper
 ```
 
 In compose, this is shared with Home Assistant as:
 
 ```text
-/config/custom_components/whatsapper
+/homeassistant/custom_components/whatsapper
 ```
 
 which matches Home Assistant custom integration expectations.
@@ -94,7 +94,7 @@ which matches Home Assistant custom integration expectations.
 On dirty builds (`x.y.z-N-sha`), the integration is installed as:
 
 ```text
-/config/custom_components/whatsappur
+/homeassistant/custom_components/whatsappur
 ```
 
 so it can run next to stable `whatsapper`.

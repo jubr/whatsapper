@@ -20,7 +20,7 @@ APP_PORT="${APP_PORT:-$APP_PORT_DEFAULT}"
 export APP_RUNTIME_NAME APP_PORT
 
 SOURCE_DIR="/workspace/homeassistant/custom_components/whatsapper"
-TARGET_ROOT="${HA_CUSTOM_COMPONENTS_PATH:-/ha-custom-components}"
+TARGET_ROOT="${HA_CUSTOM_COMPONENTS_PATH:-/homeassistant/custom_components}"
 TARGET_DIR="${TARGET_ROOT}/${APP_RUNTIME_NAME}"
 
 if [ ! -d "${SOURCE_DIR}" ]; then

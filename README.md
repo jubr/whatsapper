@@ -145,9 +145,9 @@ This image now bundles `custom_components/whatsapper` from:
 
 On container startup, the integration is copied to:
 
-- `${HA_CUSTOM_COMPONENTS_PATH:-/ha-custom-components}/whatsapper`
+- `${HA_CUSTOM_COMPONENTS_PATH:-/homeassistant/custom_components}/whatsapper`
 
-By default, `docker-compose.yaml` mounts a shared named volume (`ha-custom-components`) at `/ha-custom-components`.
+By default, `docker-compose.yaml` mounts a shared named volume (`ha-custom-components`) at `/homeassistant/custom_components`.
 
 ## Deploy Whatsapper + Home Assistant from the same compose stack
 
