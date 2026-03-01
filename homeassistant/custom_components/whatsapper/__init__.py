@@ -10,7 +10,7 @@ from urllib.parse import quote
 import voluptuous as vol
 from aiohttp import WSMsgType
 import homeassistant.helpers.config_validation as cv
-from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import issue_registry as ir
@@ -189,12 +189,32 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     conf = config[DOMAIN]
     configured_host_port = conf.get(CONF_HOST_PORT)
     ws_path = conf.get(CONF_WS_PATH, DEFAULT_WS_PATH)
-    task = hass.async_create_task(_listen_for_messages(hass, configured_host_port, ws_path))
-    hass.data.setdefault(DOMAIN, {})["listener_task"] = task
+    domain_data = hass.data.setdefault(DOMAIN, {})
 
     @callback
-    def _on_stop(_event) -> None:
-        task.cancel()
+    def _start_listener(_event=None) -> None:
+        listener_task = domain_data.get("listener_task")
+        if listener_task and not listener_task.done():
+            return
+        try:
+            task = hass.async_create_background_task(
+                _listen_for_messages(hass, configured_host_port, ws_path),
+                f"{DOMAIN}_listener_task",
+            )
+        except AttributeError:
+            task = hass.async_create_task(_listen_for_messages(hass, configured_host_port, ws_path))
+        domain_data["listener_task"] = task
+
+    @callback
+    def _on_stop(_event=None) -> None:
+        listener_task = domain_data.get("listener_task")
+        if listener_task:
+            listener_task.cancel()
+
+    if hass.is_running:
+        hass.loop.call_soon(_start_listener)
+    else:
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _start_listener)
 
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _on_stop)
     return True
