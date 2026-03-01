@@ -126,8 +126,8 @@
   <% if (qr) { %>
     <h2>WhatsApp login QR payload</h2>
     <p class="meta">Use this payload in tools that render WhatsApp pairing QR codes.</p>
-    <% if (qrImageDataUrl) { %>
-      <img class="qr-image" src="<%= qrImageDataUrl %>" alt="WhatsApp login QR image" />
+    <% if (qrImagePath) { %>
+      <img class="qr-image" src="<%= qrImagePath %>" alt="WhatsApp login QR image" />
     <% } else { %>
       <p class="meta">QR image renderer is not available yet.</p>
     <% } %>

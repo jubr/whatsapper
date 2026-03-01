@@ -54,13 +54,13 @@ const getUiVersions = () => ({
   appVersion: APP_VERSION,
 });
 
-const buildQrImageDataUrl = async (qrPayload) => {
+const buildQrImageBuffer = async (qrPayload) => {
   if (!qrPayload) {
     return null;
   }
 
   try {
-    return await QRCode.toDataURL(qrPayload, {
+    return await QRCode.toBuffer(qrPayload, {
       errorCorrectionLevel: "M",
       margin: 1,
       width: 360,
@@ -189,10 +189,9 @@ fastify.get("/hotswap", function handler(_, reply) {
 
 fastify.get("/qr", async function handler(_, reply) {
   const qrPayload = getQr();
-  const qrImageDataUrl = await buildQrImageDataUrl(qrPayload);
   reply.view("qr.ejs", {
     qr: qrPayload,
-    qrImageDataUrl,
+    qrImagePath: "api/v1/qr/image",
     qrConsole: getQrConsole(),
     qrConsoleSingle: getQrConsoleSingle(),
     qrConsoleBlock: getQrConsoleBlock(),
@@ -200,6 +199,28 @@ fastify.get("/qr", async function handler(_, reply) {
     initialized: isInitialized(),
     ...getUiVersions(),
   });
+});
+
+fastify.get("/api/v1/qr/image", async function handler(_, reply) {
+  const qrPayload = getQr();
+  if (!qrPayload) {
+    reply.statusCode = 404;
+    return reply.send({ error: "QR not available" });
+  }
+
+  try {
+    const imageBuffer = await buildQrImageBuffer(qrPayload);
+    if (!imageBuffer) {
+      reply.statusCode = 404;
+      return reply.send({ error: "QR not available" });
+    }
+    reply.header("Cache-Control", "no-store");
+    reply.type("image/png");
+    return reply.send(imageBuffer);
+  } catch (error) {
+    reply.statusCode = 500;
+    return reply.send({ error: String(error?.message || error) });
+  }
 });
 
 fastify.get("/chats", async function handler(_, reply) {
