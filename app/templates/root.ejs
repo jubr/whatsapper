@@ -42,6 +42,10 @@
     font-weight: 600;
   }
 
+  .link-list a {
+    font-size: 1.2rem;
+  }
+
   a:hover {
     color: #6cf09f;
     text-decoration: underline;
@@ -63,6 +67,7 @@
   <ul class="link-list">
     <li><a data-app-route="chats" href="chats">Chats</a></li>
     <li><a data-app-route="qr" href="qr">Qr</a></li>
+    <li><a data-app-route="ws-clients" href="ws-clients">WS clients + stats</a></li>
     <li><a data-app-route="hotswap" href="hotswap">Hotswap whatsapp-web.js</a></li>
   </ul>
 
@@ -77,7 +82,7 @@
 
 <script>
   (function () {
-    const knownRoutes = new Set(["chats", "qr", "hotswap"]);
+    const knownRoutes = new Set(["chats", "qr", "ws-clients", "hotswap"]);
     const segments = (location.pathname || "/").split("/").filter(Boolean);
     if (segments.length > 0 && knownRoutes.has(segments[segments.length - 1])) {
       segments.pop();

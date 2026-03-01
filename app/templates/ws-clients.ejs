@@ -1,0 +1,208 @@
+<style>
+  :root {
+    color-scheme: dark;
+    --wa-bg: #0b141a;
+    --wa-card: #111b21;
+    --wa-card-2: #1f2c33;
+    --wa-text: #e9edef;
+    --wa-muted: #aebac1;
+    --wa-green: #25d366;
+  }
+
+  body {
+    margin: 0;
+    background: radial-gradient(circle at top right, #123326 0%, var(--wa-bg) 45%);
+    color: var(--wa-text);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  .page {
+    max-width: 78rem;
+    margin: 2rem auto;
+    padding: 1.5rem;
+    border-radius: 0.9rem;
+    background: linear-gradient(180deg, var(--wa-card) 0%, var(--wa-card-2) 100%);
+    border: 1px solid #233138;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  a {
+    color: var(--wa-green);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  a:hover {
+    color: #6cf09f;
+    text-decoration: underline;
+  }
+
+  .meta {
+    color: var(--wa-muted);
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 0.8rem;
+    margin: 1rem 0 1.2rem;
+  }
+
+  .stat-box {
+    border: 1px solid #2d3b42;
+    border-radius: 0.55rem;
+    background: #0f1519;
+    padding: 0.65rem 0.8rem;
+  }
+
+  .stat-box strong {
+    display: block;
+    color: var(--wa-muted);
+    font-size: 0.85rem;
+    margin-bottom: 0.25rem;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.6rem;
+    font-size: 0.92rem;
+  }
+
+  th,
+  td {
+    border-bottom: 1px solid #2d3b42;
+    padding: 0.45rem 0.35rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    color: var(--wa-muted);
+    font-weight: 600;
+  }
+
+  td.mono {
+    font-family:
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      "Liberation Mono",
+      "Courier New",
+      monospace;
+  }
+</style>
+
+<div class="page">
+  <h1><%= appName %>: websocket clients + stats</h1>
+  <p class="meta">
+    App version: <strong><%= appVersion %></strong> | Runtime port: <strong><%= appPort %></strong>
+  </p>
+  <p><a href=".">Back</a></p>
+
+  <div id="statsGrid" class="stats-grid"></div>
+
+  <h2>Connected websocket clients</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Client ID</th>
+        <th>Channel</th>
+        <th>Remote</th>
+        <th>Selected events</th>
+        <th>In/Out</th>
+        <th>Connected at</th>
+        <th>Last in/out</th>
+      </tr>
+    </thead>
+    <tbody id="clientsTbody">
+      <tr>
+        <td colspan="7" class="meta">Loading...</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+  (function () {
+    const statsGrid = document.getElementById("statsGrid");
+    const clientsTbody = document.getElementById("clientsTbody");
+
+    const getBasePath = () => {
+      const pathname = location.pathname || "/";
+      const segments = pathname.split("/").filter(Boolean);
+      if (segments.length > 0 && segments[segments.length - 1] === "ws-clients") {
+        segments.pop();
+      }
+      return segments.length === 0 ? "/" : `/${segments.join("/")}/`;
+    };
+
+    const buildAppUrl = (relativePath) =>
+      `${getBasePath()}${String(relativePath || "").replace(/^\/+/, "")}`;
+
+    const renderStats = (payload) => {
+      const totals = payload?.totals || {};
+      const current = payload?.current || {};
+      const cards = [
+        ["Current clients", String(current.totalClients ?? 0)],
+        ["Current event sockets", String(current.eventsClients ?? 0)],
+        ["Current runtime sockets", String(current.runtimeClients ?? 0)],
+        ["Total accepted", String(totals.totalConnectionsAccepted ?? 0)],
+        ["Total closed", String(totals.totalConnectionsClosed ?? 0)],
+        ["WS messages in", String(totals.messagesIn ?? 0)],
+        ["WS messages out", String(totals.messagesOut ?? 0)],
+        ["RPC requests", String(totals.rpcRequests ?? 0)],
+        ["RPC errors", String(totals.rpcErrors ?? 0)],
+      ];
+      statsGrid.innerHTML = "";
+      for (const [label, value] of cards) {
+        const box = document.createElement("div");
+        box.className = "stat-box";
+        box.innerHTML = `<strong>${label}</strong><span class=\"mono\">${value}</span>`;
+        statsGrid.appendChild(box);
+      }
+    };
+
+    const renderClients = (payload) => {
+      const clients = Array.isArray(payload?.clients) ? payload.clients : [];
+      clientsTbody.innerHTML = "";
+      if (clients.length === 0) {
+        clientsTbody.innerHTML = '<tr><td colspan="7" class="meta">No websocket clients connected.</td></tr>';
+        return;
+      }
+
+      for (const client of clients) {
+        const tr = document.createElement("tr");
+        const selectedEvents = Array.isArray(client.selectedEvents)
+          ? client.selectedEvents.join(", ")
+          : "-";
+        tr.innerHTML = `
+          <td class="mono">${client.id || "-"}</td>
+          <td>${client.channel || "-"}</td>
+          <td class="mono">${client.remoteAddress || "-"}</td>
+          <td>${selectedEvents}</td>
+          <td class="mono">${client.messagesIn ?? 0}/${client.messagesOut ?? 0}</td>
+          <td class="mono">${client.connectedAt || "-"}</td>
+          <td class="mono">${client.lastInType || "-"} | ${client.lastOutType || "-"}</td>
+        `;
+        clientsTbody.appendChild(tr);
+      }
+    };
+
+    const loadSnapshot = async () => {
+      const response = await fetch(buildAppUrl("api/v1/ws/clients"));
+      const payload = await response.json();
+      renderStats(payload);
+      renderClients(payload);
+    };
+
+    loadSnapshot().catch((error) => {
+      clientsTbody.innerHTML = `<tr><td colspan="7" class="meta">Failed to load websocket stats: ${error.message}</td></tr>`;
+    });
+    setInterval(() => {
+      loadSnapshot().catch(() => {});
+    }, 2000);
+  })();
+</script>
