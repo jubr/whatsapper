@@ -187,9 +187,9 @@ fastify.get("/hotswap", function handler(_, reply) {
   reply.view("hotswap.ejs", getUiVersions());
 });
 
-fastify.get("/qr", async function handler(_, reply) {
+fastify.get("/qr", function handler(_, reply) {
   const qrPayload = getQr();
-  reply.view("qr.ejs", {
+  return reply.view("qr.ejs", {
     qr: qrPayload,
     qrImagePath: "api/v1/qr/image",
     qrConsole: getQrConsole(),
