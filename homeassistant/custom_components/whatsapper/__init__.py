@@ -14,13 +14,13 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import issue_registry as ir
+from .auto_host_port import async_detect_host_port
 
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "whatsapper"
 CONF_HOST_PORT = "host_port"
 CONF_WS_PATH = "ws_path"
-DEFAULT_HOST_PORT = "localhost:4000"
 DEFAULT_WS_PATH = "/api/v1/events/ws"
 MESSAGE_EVENT = "whatsapper_message"
 WS_EVENTS = ("message", "qr", "ready")
@@ -31,7 +31,7 @@ CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
             {
-                vol.Optional(CONF_HOST_PORT, default=DEFAULT_HOST_PORT): cv.string,
+                vol.Optional(CONF_HOST_PORT): cv.string,
                 vol.Optional(CONF_WS_PATH, default=DEFAULT_WS_PATH): cv.string,
             }
         )
@@ -93,11 +93,21 @@ def _delete_qr_issue(hass: HomeAssistant) -> None:
     ir.async_delete_issue(hass, DOMAIN, QR_REPAIRS_ISSUE_ID)
 
 
-async def _listen_for_messages(hass: HomeAssistant, ws_url: str) -> None:
+async def _listen_for_messages(
+    hass: HomeAssistant,
+    configured_host_port: str | None,
+    ws_path: str,
+) -> None:
     backoff = 2
     session = async_get_clientsession(hass)
 
     while True:
+        host_port = await async_detect_host_port(
+            hass,
+            configured_host_port,
+            refresh=backoff > 2,
+        )
+        ws_url = _build_ws_url(host_port, ws_path)
         try:
             async with session.ws_connect(ws_url, heartbeat=30) as websocket:
                 _LOGGER.info("Connected to Whatsapper websocket at %s", ws_url)
@@ -177,9 +187,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         return True
 
     conf = config[DOMAIN]
-    ws_url = _build_ws_url(conf[CONF_HOST_PORT], conf[CONF_WS_PATH])
-
-    task = hass.async_create_task(_listen_for_messages(hass, ws_url))
+    configured_host_port = conf.get(CONF_HOST_PORT)
+    ws_path = conf.get(CONF_WS_PATH, DEFAULT_WS_PATH)
+    task = hass.async_create_task(_listen_for_messages(hass, configured_host_port, ws_path))
     hass.data.setdefault(DOMAIN, {})["listener_task"] = task
 
     @callback

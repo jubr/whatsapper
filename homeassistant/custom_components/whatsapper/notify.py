@@ -20,6 +20,7 @@ from homeassistant.components.notify import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from .auto_host_port import async_detect_host_port
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -64,9 +65,6 @@ def get_service(
     host_port = config.get(HOST_PORT)
     ws_path = config.get(CONF_WS_PATH, DEFAULT_WS_PATH)
 
-    if host_port is None:
-        host_port = "localhost:4000"
-
     return WhatsapperNotificationService(hass, chat_id, chat_name, host_port, ws_path)
 
 
@@ -83,54 +81,81 @@ class WhatsapperNotificationService(BaseNotificationService):
     def _is_chat_id(value: str | None) -> bool:
         return isinstance(value, str) and "@" in value
 
-    def _build_ws_url(self) -> str:
+    async def _get_host_port(self, refresh: bool = False) -> str:
+        return await async_detect_host_port(
+            self.hass,
+            self.host_port,
+            refresh=refresh,
+        )
+
+    def _build_ws_url_for_host(self, host_port: str) -> str:
         normalized_path = self.ws_path if str(self.ws_path).startswith("/") else f"/{self.ws_path}"
-        return f"ws://{self.host_port}{normalized_path}?events=message"
+        return f"ws://{host_port}{normalized_path}?events=message"
 
     async def _ws_rpc_request(self, action: str, params: dict[str, Any]) -> dict[str, Any]:
         request_id = str(uuid4())
-        ws_url = self._build_ws_url()
         session = async_get_clientsession(self.hass)
+        attempted_hosts: list[str] = []
+        errors: list[str] = []
 
-        try:
-            async with session.ws_connect(ws_url, heartbeat=30) as websocket:
-                await websocket.send_json(
-                    {
-                        "type": "rpc",
-                        "requestId": request_id,
-                        "action": action,
-                        "params": params,
-                    }
-                )
+        first_host = await self._get_host_port(refresh=False)
+        attempted_hosts.append(first_host)
+        if not self.host_port:
+            refreshed_host = await self._get_host_port(refresh=True)
+            if refreshed_host not in attempted_hosts:
+                attempted_hosts.append(refreshed_host)
 
-                while True:
-                    ws_message = await asyncio.wait_for(websocket.receive(), timeout=20)
+        for host_port in attempted_hosts:
+            ws_url = self._build_ws_url_for_host(host_port)
+            try:
+                async with session.ws_connect(ws_url, heartbeat=30) as websocket:
+                    await websocket.send_json(
+                        {
+                            "type": "rpc",
+                            "requestId": request_id,
+                            "action": action,
+                            "params": params,
+                        }
+                    )
 
-                    if ws_message.type != WSMsgType.TEXT:
-                        if ws_message.type in (WSMsgType.CLOSED, WSMsgType.CLOSE, WSMsgType.ERROR):
-                            raise RuntimeError(f"WebSocket closed while waiting for RPC '{action}'")
-                        continue
+                    while True:
+                        ws_message = await asyncio.wait_for(websocket.receive(), timeout=20)
 
-                    try:
-                        payload = json.loads(ws_message.data)
-                    except json.JSONDecodeError:
-                        continue
+                        if ws_message.type != WSMsgType.TEXT:
+                            if ws_message.type in (
+                                WSMsgType.CLOSED,
+                                WSMsgType.CLOSE,
+                                WSMsgType.ERROR,
+                            ):
+                                raise RuntimeError(
+                                    f"WebSocket closed while waiting for RPC '{action}'"
+                                )
+                            continue
 
-                    if payload.get("type") in ("connected", "pong"):
-                        continue
+                        try:
+                            payload = json.loads(ws_message.data)
+                        except json.JSONDecodeError:
+                            continue
 
-                    if (
-                        payload.get("type") == "rpc_result"
-                        and payload.get("requestId") == request_id
-                    ):
-                        if payload.get("ok"):
-                            result = payload.get("result")
-                            return result if isinstance(result, dict) else {}
-                        raise RuntimeError(
-                            str(payload.get("error") or f"RPC action '{action}' failed")
-                        )
-        except Exception as err:  # pylint: disable=broad-except
-            raise RuntimeError(f"WebSocket RPC '{action}' failed: {err}") from err
+                        if payload.get("type") in ("connected", "pong"):
+                            continue
+
+                        if (
+                            payload.get("type") == "rpc_result"
+                            and payload.get("requestId") == request_id
+                        ):
+                            if payload.get("ok"):
+                                result = payload.get("result")
+                                return result if isinstance(result, dict) else {}
+                            raise RuntimeError(
+                                str(payload.get("error") or f"RPC action '{action}' failed")
+                            )
+            except Exception as err:  # pylint: disable=broad-except
+                errors.append(f"{host_port}: {err}")
+
+        raise RuntimeError(
+            f"WebSocket RPC '{action}' failed on all host_port candidates ({'; '.join(errors)})"
+        )
 
     async def _resolve_chat_id_from_name(self, chat_name: str) -> str | None:
         chat_name = chat_name.strip()
