@@ -215,6 +215,7 @@ fastify.get("/api/v1/qr/image", async function handler(_, reply) {
       return reply.send({ error: "QR not available" });
     }
     reply.header("Cache-Control", "no-store");
+    reply.header("Content-Disposition", "inline; filename=\"qr.png\"");
     reply.type("image/png");
     return reply.send(imageBuffer);
   } catch (error) {
