@@ -37,37 +37,68 @@ const fs = require("fs");
 const path = require("path");
 
 const domain = process.env.APP_RUNTIME_NAME;
+const domainTitle = `${domain.charAt(0).toUpperCase()}${domain.slice(1)}`;
 const appPort = Number(process.env.APP_PORT);
 const defaultHaHostPort = `localhost:${appPort + 1000}`;
 const targetDir = process.env.TARGET_DIR;
 
-const manifestPath = path.join(targetDir, "manifest.json");
-const initPath = path.join(targetDir, "__init__.py");
-const notifyPath = path.join(targetDir, "notify.py");
+const TEXT_EXTENSIONS = new Set([
+  ".json",
+  ".py",
+  ".yaml",
+  ".yml",
+  ".md",
+  ".txt",
+  ".cfg",
+  ".ini",
+]);
 
-const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-manifest.domain = domain;
-manifest.name = `${domain.charAt(0).toUpperCase()}${domain.slice(1)} integration`;
-fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 4)}\n`, "utf8");
+const walkFiles = (directory) => {
+  const entries = fs.readdirSync(directory, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const fullPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...walkFiles(fullPath));
+      continue;
+    }
+    if (entry.isFile()) {
+      files.push(fullPath);
+    }
+  }
+  return files;
+};
 
-let initText = fs.readFileSync(initPath, "utf8");
-initText = initText.replace('DOMAIN = "whatsapper"', `DOMAIN = "${domain}"`);
-initText = initText.replace(
-  'MESSAGE_EVENT = "whatsapper_message"',
-  `MESSAGE_EVENT = "${domain}_message"`,
-);
-initText = initText.replace(
-  'DEFAULT_HOST_PORT = "localhost:4000"',
-  `DEFAULT_HOST_PORT = "${defaultHaHostPort}"`,
-);
-fs.writeFileSync(initPath, initText, "utf8");
+const replaceInFile = (filePath) => {
+  const extension = path.extname(filePath).toLowerCase();
+  if (!TEXT_EXTENSIONS.has(extension)) {
+    return false;
+  }
 
-let notifyText = fs.readFileSync(notifyPath, "utf8");
-notifyText = notifyText.replace(
-  'host_port = "localhost:4000"',
-  `host_port = "${defaultHaHostPort}"`,
+  const original = fs.readFileSync(filePath, "utf8");
+  let updated = original;
+  updated = updated.replace(/Whatsapper/g, domainTitle);
+  updated = updated.replace(/whatsapper/g, domain);
+  updated = updated.replace(/localhost:4000/g, defaultHaHostPort);
+
+  if (updated === original) {
+    return false;
+  }
+
+  fs.writeFileSync(filePath, updated, "utf8");
+  return true;
+};
+
+let changedFiles = 0;
+for (const filePath of walkFiles(targetDir)) {
+  if (replaceInFile(filePath)) {
+    changedFiles += 1;
+  }
+}
+
+console.log(
+  `Dirty rewrite complete for ${targetDir} (domain=${domain}, changedFiles=${changedFiles})`,
 );
-fs.writeFileSync(notifyPath, notifyText, "utf8");
 NODE
 fi
 
