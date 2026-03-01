@@ -245,14 +245,10 @@ const bindClientEvents = (client) => {
     const qrConsoleBlock = renderQrConsole(qr, { darkCell: "##", lightCell: "  " });
     const qrConsole = getActiveQrConsole(qrConsoleSingle, qrConsoleBlock);
     emitRuntimeLog("info", "QR received");
-    console.log("QR RECEIVED", qr);
     receivedQr = qr;
     receivedQrConsole = qrConsole;
     receivedQrConsoleSingle = qrConsoleSingle;
     receivedQrConsoleBlock = qrConsoleBlock;
-    if (qrConsole) {
-      console.log(qrConsole);
-    }
     emitEvent("qr", {
       qr,
       qrConsole,
