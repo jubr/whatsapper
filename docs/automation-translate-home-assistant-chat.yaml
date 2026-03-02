@@ -1,0 +1,107 @@
+# Home Assistant package: Whatsapper NL<->PT auto-translate helper
+#
+# Place in /config/packages/ (or split parts into your own config).
+# This listens on the hardcoded chat_name "Home Assistant".
+# It ignores self-sent messages to avoid translation loops.
+#
+# Stable service/event names:
+# - event_type: whatsapper_message
+# - notify service: notify.whatsapper
+#
+# Dirty builds:
+# - event_type: whatsappur_message
+# - notify service: notify.whatsappur
+
+rest_command:
+  whatsapper_translate_nl_to_pt:
+    url: >-
+      https://translate.googleapis.com/translate_a/single?client=gtx&sl=nl&tl=pt&dt=t&q={{ text | urlencode }}
+    method: GET
+    timeout: 15
+
+  whatsapper_translate_pt_to_nl:
+    url: >-
+      https://translate.googleapis.com/translate_a/single?client=gtx&sl=pt&tl=nl&dt=t&q={{ text | urlencode }}
+    method: GET
+    timeout: 15
+
+automation:
+  - id: whatsapper_home_assistant_chat_translate
+    alias: Whatsapper Home Assistant chat NL<->PT translate
+    mode: queued
+    max: 10
+    trigger:
+      - platform: event
+        event_type: whatsapper_message
+    condition:
+      - condition: template
+        value_template: >-
+          {{
+            trigger.event.data.chat_name == 'Home Assistant'
+            and (trigger.event.data.from_me | default(false)) == false
+            and (trigger.event.data.body | default('') | trim) != ''
+          }}
+    variables:
+      source_text: "{{ trigger.event.data.body | trim }}"
+      source_chat_id: "{{ trigger.event.data.chat_id | default('') }}"
+      source_message_id: "{{ trigger.event.data.message_id | default('') }}"
+    action:
+      - action: rest_command.whatsapper_translate_nl_to_pt
+        data:
+          text: "{{ source_text }}"
+        response_variable: nl_to_pt_response
+
+      - action: rest_command.whatsapper_translate_pt_to_nl
+        data:
+          text: "{{ source_text }}"
+        response_variable: pt_to_nl_response
+
+      - variables:
+          nl_to_pt_text: >-
+            {{
+              (
+                nl_to_pt_response.content[0]
+                | default([])
+                | map(attribute=0)
+                | join('')
+              ) | trim
+            }}
+          pt_to_nl_text: >-
+            {{
+              (
+                pt_to_nl_response.content[0]
+                | default([])
+                | map(attribute=0)
+                | join('')
+              ) | trim
+            }}
+          source_text_norm: "{{ source_text | lower }}"
+          translated_text: >-
+            {% set a = nl_to_pt_text %}
+            {% set b = pt_to_nl_text %}
+            {% if a and (a | lower) != source_text_norm %}
+              {{ a }}
+            {% elif b and (b | lower) != source_text_norm %}
+              {{ b }}
+            {% else %}
+              {{ '' }}
+            {% endif %}
+          translated_flag: >-
+            {% if translated_text == nl_to_pt_text and translated_text != '' %}
+              🇵🇹
+            {% elif translated_text == pt_to_nl_text and translated_text != '' %}
+              🇳🇱
+            {% else %}
+              🌐
+            {% endif %}
+
+      - condition: template
+        value_template: "{{ translated_text | trim != '' }}"
+
+      - action: notify.whatsapper
+        data:
+          target:
+            - "{{ source_chat_id }}"
+          message: "{{ translated_flag }} {{ translated_text }}"
+          data:
+            reply_to_message_id: "{{ source_message_id }}"

@@ -81,6 +81,7 @@ def _to_ha_message_event(payload: dict[str, Any]) -> dict[str, Any]:
         "event_timestamp": payload.get("timestamp"),
         "message_id": data.get("id"),
         "chat_id": data.get("chatId"),
+        "chat_name": data.get("chatName"),
         "from": data.get("from"),
         "to": data.get("to"),
         "author": data.get("author"),

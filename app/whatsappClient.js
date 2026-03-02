@@ -64,6 +64,8 @@ let clientInitialized = false;
 let currentChoice = "built-in";
 let swapInProgress = false;
 let refsCache = { fetchedAt: 0, payload: null };
+const chatNameCache = new Map();
+const CHAT_NAME_CACHE_LIMIT = 500;
 
 const eventSubscribers = new Set();
 const runtimeLogSubscribers = new Set();
@@ -148,6 +150,81 @@ const serializeMessage = (message) => {
     hasReaction: Boolean(message?.hasReaction),
     mentionedIds: Array.isArray(message?.mentionedIds) ? message.mentionedIds : [],
   };
+};
+
+const normalizeChatName = (value) => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed || null;
+};
+
+const cacheChatName = (chatId, chatName) => {
+  if (!chatId || !chatName) {
+    return;
+  }
+  if (!chatNameCache.has(chatId) && chatNameCache.size >= CHAT_NAME_CACHE_LIMIT) {
+    const firstKey = chatNameCache.keys().next().value;
+    if (firstKey) {
+      chatNameCache.delete(firstKey);
+    }
+  }
+  chatNameCache.set(chatId, chatName);
+};
+
+const resolveChatName = async (message, chatId) => {
+  if (!chatId) {
+    return null;
+  }
+
+  const cachedName = normalizeChatName(chatNameCache.get(chatId));
+  if (cachedName) {
+    return cachedName;
+  }
+
+  const hintedName = normalizeChatName(
+    message?._data?.chat?.name || message?._data?.chat?.formattedTitle,
+  );
+  if (hintedName) {
+    cacheChatName(chatId, hintedName);
+    return hintedName;
+  }
+
+  try {
+    if (typeof message?.getChat === "function") {
+      const chat = await message.getChat();
+      const resolvedName = normalizeChatName(chat?.name || chat?.formattedTitle);
+      if (resolvedName) {
+        cacheChatName(chatId, resolvedName);
+        return resolvedName;
+      }
+    }
+  } catch (_) {
+    // Ignore lookup errors and continue without chat name.
+  }
+
+  return null;
+};
+
+const emitMessageEvent = async (message, { includeFromMe }) => {
+  try {
+    const payload = serializeMessage(message);
+    if (payload.fromMe !== includeFromMe) {
+      return;
+    }
+
+    const chatName = await resolveChatName(message, payload.chatId);
+    if (chatName) {
+      payload.chatName = chatName;
+    }
+
+    emitEvent("message", payload);
+  } catch (error) {
+    emitRuntimeLog("warn", "Failed to process message event", {
+      error: String(error?.message || error),
+    });
+  }
 };
 
 const renderQrConsole = (qrPayload, { darkCell, lightCell }) => {
@@ -287,17 +364,11 @@ const bindClientEvents = (client) => {
   // Keep a single outbound envelope type ("message"), but source it from
   // different wwebjs events to include both inbound and self-sent messages.
   client.on("message", (message) => {
-    if (message?.fromMe) {
-      return;
-    }
-    emitEvent("message", serializeMessage(message));
+    void emitMessageEvent(message, { includeFromMe: false });
   });
 
   client.on("message_create", (message) => {
-    if (!message?.fromMe) {
-      return;
-    }
-    emitEvent("message", serializeMessage(message));
+    void emitMessageEvent(message, { includeFromMe: true });
   });
 };
 

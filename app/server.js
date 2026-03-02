@@ -343,6 +343,8 @@ const handleWsRpcRequest = async (rpcPayload) => {
     case "send_message": {
       const chatId = typeof params.chatId === "string" ? params.chatId.trim() : "";
       const message = typeof params.message === "string" ? params.message : "";
+      const quotedMessageId =
+        typeof params.quotedMessageId === "string" ? params.quotedMessageId.trim() : "";
       if (!chatId) {
         throw new Error("Missing params.chatId for send_message");
       }
@@ -350,8 +352,15 @@ const handleWsRpcRequest = async (rpcPayload) => {
       if (!activeClient) {
         throw new Error("Client not initialized");
       }
-      const response = await activeClient.sendMessage(chatId, message);
-      return { chatId, messageId: response?.id?._serialized || null };
+      const sendOptions = quotedMessageId ? { quotedMessageId } : undefined;
+      const response = sendOptions
+        ? await activeClient.sendMessage(chatId, message, sendOptions)
+        : await activeClient.sendMessage(chatId, message);
+      return {
+        chatId,
+        messageId: response?.id?._serialized || null,
+        quotedMessageId: quotedMessageId || null,
+      };
     }
 
     case "send_media": {

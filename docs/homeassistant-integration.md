@@ -57,6 +57,7 @@ The bundled custom integration opens the websocket and emits a Home Assistant ev
 Event payload keys:
 
 - `chat_id` (use this as target for replies)
+- `chat_name`
 - `body`
 - `from`, `to`, `author`
 - `message_id`
@@ -181,3 +182,12 @@ automation:
             - "{{ trigger.event.data.chat_id }}"
           message: "whatsapper-pong{{ ping_suffix }}"
 ```
+
+## Example automation package: Dutch <-> Portuguese translator
+
+See:
+
+- [`docs/automation-translate-home-assistant-chat.yaml`](./automation-translate-home-assistant-chat.yaml)
+
+It listens to hardcoded `chat_name: Home Assistant`, calls the public Google translate endpoint,
+quote-replies with a flag (`🇵🇹` / `🇳🇱`), and avoids loops by ignoring `from_me: true` messages.

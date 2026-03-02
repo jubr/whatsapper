@@ -32,6 +32,7 @@ CONF_CHAT_NAME = "chat_name"
 ATTR_IMAGE = "image"
 ATTR_IMAGE_TYPE = "image_type"
 ATTR_IMAGE_NAME = "image_name"
+ATTR_REPLY_TO_MESSAGE_ID = "reply_to_message_id"
 DEFAULT_WS_PATH = "/api/v1/events/ws"
 
 
@@ -219,6 +220,11 @@ class WhatsapperNotificationService(BaseNotificationService):
                 return
 
             data = kwargs.get(ATTR_DATA)
+            reply_to_message_id = None
+            if isinstance(data, dict):
+                reply_candidate = data.get(ATTR_REPLY_TO_MESSAGE_ID)
+                if isinstance(reply_candidate, str) and reply_candidate.strip():
+                    reply_to_message_id = reply_candidate.strip()
 
             if data and all(attr in data for attr in [ATTR_IMAGE, ATTR_IMAGE_TYPE, ATTR_IMAGE_NAME]):
                 await self._ws_rpc_request(
@@ -241,6 +247,7 @@ class WhatsapperNotificationService(BaseNotificationService):
                 {
                     "chatId": chat_id,
                     "message": msg,
+                    **({"quotedMessageId": reply_to_message_id} if reply_to_message_id else {}),
                 },
             )
         except Exception as err:  # pylint: disable=broad-except
