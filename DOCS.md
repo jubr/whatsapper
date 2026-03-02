@@ -69,13 +69,13 @@ The entry title reflects the chosen host/port (`Whatsapper (<host:port>)` or `Wh
 
 ```yaml
 whatsapper:
-  host_port: localhost:3001
+  host_port: localhost:3000
   ws_path: /api/v1/events/ws
 
 notify:
   - platform: whatsapper
     name: whatsapp
-    host_port: localhost:3001
+    host_port: localhost:3000
     # Configure one default:
     # chat_id: 123123123@g.us
     chat_name: Family Group
