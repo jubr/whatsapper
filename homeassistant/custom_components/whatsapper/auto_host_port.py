@@ -27,10 +27,6 @@ CANDIDATE_HOST_PORTS = (
     "localhost:3000",
     "localhost:4001",
     "localhost:4000",
-    "addon_local_whatsappur:3001",
-    "addon_local_whatsapper:3000",
-    "whatsappur:3001",
-    "whatsapper:3000",
 )
 
 
@@ -138,6 +134,16 @@ def _build_addon_runtime_candidates(slug: str, info_data: dict[str, Any]) -> lis
     return _unique(candidates)
 
 
+def _build_slug_fallback_candidates(slugs: list[str]) -> list[str]:
+    candidates: list[str] = []
+    for slug in slugs:
+        host_aliases = _unique([f"addon_local_{slug}", slug])
+        for host in host_aliases:
+            for port in (3001, 3000):
+                candidates.append(f"{host}:{port}")
+    return _unique(candidates)
+
+
 def _matches_target_addon(slug: str) -> bool:
     normalized = slug.lower()
     for target in TARGET_ADDON_NAMES:
@@ -204,6 +210,7 @@ async def _detect_from_supervisor_runtime(hass: HomeAssistant) -> list[str]:
         info_data = _extract_supervisor_data(info_payload)
         candidates.extend(_build_addon_runtime_candidates(slug, info_data))
 
+    candidates.extend(_build_slug_fallback_candidates(matching_slugs))
     return _unique(candidates)
 
 
