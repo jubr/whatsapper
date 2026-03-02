@@ -2,7 +2,9 @@
 #
 # Place in /config/packages/ (or split parts into your own config).
 # This listens on the hardcoded chat_name "Home Assistant".
-# It ignores self-sent messages to avoid translation loops.
+# It translates both inbound and self-sent messages.
+# Loop prevention is done by ignoring messages that already start with
+# one of the translator flags (🇵🇹 / 🇳🇱 / 🌐).
 #
 # Stable service/event names:
 # - event_type: whatsapper_message
@@ -30,21 +32,32 @@ automation:
     alias: Whatsapper Home Assistant chat NL<->PT translate
     mode: queued
     max: 10
+    variables:
+      # Hardcoded mode switch:
+      # false => stable (whatsapper_message + notify.whatsapper)
+      # true  => dirty  (whatsappur_message + notify.whatsappur)
+      use_dirty_build: false
+      selected_event_type: >-
+        {{ 'whatsappur_message' if use_dirty_build else 'whatsapper_message' }}
+      source_text: "{{ trigger.event.data.body | default('') | trim }}"
+      source_chat_id: "{{ trigger.event.data.chat_id | default('') }}"
+      source_message_id: "{{ trigger.event.data.message_id | default('') }}"
     trigger:
       - platform: event
         event_type: whatsapper_message
+      - platform: event
+        event_type: whatsappur_message
     condition:
       - condition: template
         value_template: >-
           {{
+            trigger.event.event_type == selected_event_type
             trigger.event.data.chat_name == 'Home Assistant'
-            and (trigger.event.data.from_me | default(false)) == false
-            and (trigger.event.data.body | default('') | trim) != ''
+            and source_chat_id != ''
+            and source_message_id != ''
+            and source_text != ''
+            and not (source_text is match('^(🇵🇹|🇳🇱|🌐)'))
           }}
-    variables:
-      source_text: "{{ trigger.event.data.body | trim }}"
-      source_chat_id: "{{ trigger.event.data.chat_id | default('') }}"
-      source_message_id: "{{ trigger.event.data.message_id | default('') }}"
     action:
       - action: rest_command.whatsapper_translate_nl_to_pt
         data:
@@ -98,10 +111,23 @@ automation:
       - condition: template
         value_template: "{{ translated_text | trim != '' }}"
 
-      - action: notify.whatsapper
-        data:
-          target:
-            - "{{ source_chat_id }}"
-          message: "{{ translated_flag }} {{ translated_text }}"
-          data:
-            reply_to_message_id: "{{ source_message_id }}"
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ use_dirty_build }}"
+            sequence:
+              - action: notify.whatsappur
+                data:
+                  target:
+                    - "{{ source_chat_id }}"
+                  message: "{{ translated_flag }} {{ translated_text }}"
+                  data:
+                    reply_to_message_id: "{{ source_message_id }}"
+        default:
+          - action: notify.whatsapper
+            data:
+              target:
+                - "{{ source_chat_id }}"
+              message: "{{ translated_flag }} {{ translated_text }}"
+              data:
+                reply_to_message_id: "{{ source_message_id }}"

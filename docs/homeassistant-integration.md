@@ -190,4 +190,4 @@ See:
 - [`docs/automation-translate-home-assistant-chat.yaml`](./automation-translate-home-assistant-chat.yaml)
 
 It listens to hardcoded `chat_name: Home Assistant`, calls the public Google translate endpoint,
-quote-replies with a flag (`🇵🇹` / `🇳🇱`), and avoids loops by ignoring `from_me: true` messages.
+quote-replies with a flag (`🇵🇹` / `🇳🇱`), and avoids loops by ignoring messages that already start with a translator flag.
