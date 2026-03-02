@@ -120,6 +120,9 @@ The setup form asks for:
 Leave `host_port` empty to use auto-detection (Supervisor add-on runtime first, then localhost fallbacks).
 The integration entry title shows the active host/port value (`Whatsapper (<host:port>)` or `Whatsapper (auto-detect)`).
 
+When configured via UI config entry, the integration also auto-loads `notify.whatsapp`.
+If no default `chat_id`/`chat_name` is configured on a legacy YAML notify platform, pass `target` explicitly in service calls.
+
 ### Supervisor discovery
 
 The add-on now advertises Supervisor discovery (`discovery: [whatsapper]` on stable, `discovery: [whatsappur]` on dirty builds).

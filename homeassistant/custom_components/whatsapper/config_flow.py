@@ -6,7 +6,11 @@ from typing import Any
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
-from homeassistant.helpers.service_info.hassio import HassioServiceInfo
+
+try:
+    from homeassistant.helpers.service_info.hassio import HassioServiceInfo
+except ImportError:  # pragma: no cover - compatibility fallback for older HA cores
+    HassioServiceInfo = dict[str, Any]  # type: ignore[assignment,misc]
 
 from . import CONF_HOST_PORT, CONF_WS_PATH, DEFAULT_WS_PATH, DOMAIN
 

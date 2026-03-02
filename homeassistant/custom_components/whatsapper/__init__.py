@@ -11,7 +11,8 @@ import voluptuous as vol
 from aiohttp import WSMsgType
 from homeassistant.config_entries import ConfigEntry
 import homeassistant.helpers.config_validation as cv
-from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_HOMEASSISTANT_STARTED
+from homeassistant.const import CONF_NAME, EVENT_HOMEASSISTANT_STOP, EVENT_HOMEASSISTANT_STARTED
+from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import issue_registry as ir
@@ -35,6 +36,8 @@ VERSION_RELOAD_TASK_KEY = "_version_reload_task"
 START_LISTENER_CALLBACK_KEY = "_start_listener_callback"
 STOP_LISTENER_REGISTERED_KEY = "_stop_listener_registered"
 LISTENER_SETTINGS_KEY = "_listener_settings"
+NOTIFY_PLATFORM_LOADED_KEY = "_notify_platform_loaded"
+DEFAULT_NOTIFY_SERVICE_NAME = "whatsapp"
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -332,6 +335,44 @@ def _ensure_stop_listener_registered(hass: HomeAssistant) -> None:
     domain_data[STOP_LISTENER_REGISTERED_KEY] = True
 
 
+async def _ensure_auto_notify_platform(
+    hass: HomeAssistant,
+    ws_path: str,
+) -> None:
+    """Auto-load notify platform so notify.whatsapp exists without YAML."""
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if domain_data.get(NOTIFY_PLATFORM_LOADED_KEY):
+        return
+
+    if hass.services.has_service("notify", DEFAULT_NOTIFY_SERVICE_NAME):
+        _LOGGER.debug(
+            "Skipping notify auto-load because notify.%s already exists",
+            DEFAULT_NOTIFY_SERVICE_NAME,
+        )
+        domain_data[NOTIFY_PLATFORM_LOADED_KEY] = True
+        return
+
+    discovery_info: dict[str, Any] = {
+        CONF_NAME: DEFAULT_NOTIFY_SERVICE_NAME,
+        CONF_WS_PATH: ws_path,
+    }
+
+    try:
+        await async_load_platform(
+            hass,
+            "notify",
+            DOMAIN,
+            discovery_info,
+            {},
+        )
+    except Exception as err:  # pylint: disable=broad-except
+        _LOGGER.warning("Failed to auto-load notify platform: %s", err)
+        return
+
+    domain_data[NOTIFY_PLATFORM_LOADED_KEY] = True
+    _LOGGER.info("Auto-loaded notify.%s", DEFAULT_NOTIFY_SERVICE_NAME)
+
+
 async def _async_reload_entry_on_update(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
 
@@ -472,6 +513,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     domain_data[START_LISTENER_CALLBACK_KEY] = _start_listener
     _ensure_stop_listener_registered(hass)
+    await _ensure_auto_notify_platform(hass, ws_path)
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry_on_update))
     return True
 
@@ -497,5 +539,6 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
     domain_data.pop("listener_task", None)
     domain_data.pop(LISTENER_SETTINGS_KEY, None)
     domain_data.pop(START_LISTENER_CALLBACK_KEY, None)
+    domain_data.pop(NOTIFY_PLATFORM_LOADED_KEY, None)
     return True
 

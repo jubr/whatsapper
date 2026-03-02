@@ -65,6 +65,7 @@ Fields:
 
 The entry title reflects the chosen host/port (`Whatsapper (<host:port>)` or `Whatsapper (auto-detect)`).
 The add-on also publishes Supervisor discovery, so Home Assistant can trigger a discovered setup flow.
+UI config-entry setup auto-loads `notify.whatsapp`.
 
 ## Home Assistant `configuration.yaml` (legacy)
 

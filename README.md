@@ -168,6 +168,7 @@ Then configure Home Assistant via UI (recommended):
 
 The integration entry title shows host/port (`Whatsapper (<host:port>)` or `Whatsapper (auto-detect)`).
 The add-on also publishes Supervisor discovery so HA can offer a discovered setup prompt automatically.
+UI config-entry setup auto-loads `notify.whatsapp`.
 
 Legacy YAML setup is still supported:
 

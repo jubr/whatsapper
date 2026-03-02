@@ -35,21 +35,12 @@ ATTR_IMAGE_NAME = "image_name"
 DEFAULT_WS_PATH = "/api/v1/events/ws"
 
 
-def _validate_platform_config(config):
-    if config.get(CONF_CHAT_ID) or config.get(CONF_CHAT_NAME):
-        return config
-    raise vol.Invalid("Either chat_id or chat_name must be configured")
-
-
-PLATFORM_SCHEMA = vol.All(
-    PLATFORM_SCHEMA.extend(
-        {
-            vol.Optional(CONF_CHAT_ID): vol.Coerce(str),
-            vol.Optional(CONF_CHAT_NAME): vol.Coerce(str),
-            vol.Optional(CONF_WS_PATH, default=DEFAULT_WS_PATH): vol.Coerce(str),
-        }
-    ),
-    _validate_platform_config,
+PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
+    {
+        vol.Optional(CONF_CHAT_ID): vol.Coerce(str),
+        vol.Optional(CONF_CHAT_NAME): vol.Coerce(str),
+        vol.Optional(CONF_WS_PATH, default=DEFAULT_WS_PATH): vol.Coerce(str),
+    }
 )
 
 
@@ -60,10 +51,14 @@ def get_service(
 ) -> WhatsapperNotificationService:
     """Get the Whatsapper notification service."""
 
-    chat_id = config.get(CONF_CHAT_ID)
-    chat_name = config.get(CONF_CHAT_NAME)
-    host_port = config.get(HOST_PORT)
-    ws_path = config.get(CONF_WS_PATH, DEFAULT_WS_PATH)
+    merged_config: dict[str, Any] = dict(config or {})
+    if isinstance(discovery_info, dict):
+        merged_config.update(discovery_info)
+
+    chat_id = merged_config.get(CONF_CHAT_ID)
+    chat_name = merged_config.get(CONF_CHAT_NAME)
+    host_port = merged_config.get(HOST_PORT)
+    ws_path = merged_config.get(CONF_WS_PATH, DEFAULT_WS_PATH)
 
     return WhatsapperNotificationService(hass, chat_id, chat_name, host_port, ws_path)
 
