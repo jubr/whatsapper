@@ -499,12 +499,14 @@ const getRuntimeState = () => ({
   appBuildVersion: APP_BUILD_VERSION || packageJson.version || "unknown",
   appName: APP_RUNTIME_NAME,
   appPort: APP_RUNTIME_PORT,
+  devBuild: IS_DIRTY_BUILD,
   dirtyBuild: IS_DIRTY_BUILD,
 });
 
 const getRuntimeIdentity = () => ({
   appName: APP_RUNTIME_NAME,
   appPort: APP_RUNTIME_PORT,
+  devBuild: IS_DIRTY_BUILD,
   dirtyBuild: IS_DIRTY_BUILD,
 });
 
@@ -694,11 +696,29 @@ const startupPromise = (async () => {
     installedVersion: installedAtBoot,
     appName: APP_RUNTIME_NAME,
     appPort: APP_RUNTIME_PORT,
-    dirtyBuild: IS_DIRTY_BUILD,
+    devBuild: IS_DIRTY_BUILD,
   });
 
   const persistedChoice = await loadPersistedChoice();
   if (persistedChoice !== "built-in") {
+    const parsedPersistedChoice = parseChoice(persistedChoice);
+    if (parsedPersistedChoice.type === "tag") {
+      const normalizedInstalledVersion = String(installedAtBoot || "")
+        .trim()
+        .replace(/^v/i, "");
+      const normalizedTagVersion = String(parsedPersistedChoice.ref || "")
+        .trim()
+        .replace(/^v/i, "");
+      if (normalizedInstalledVersion && normalizedInstalledVersion === normalizedTagVersion) {
+        currentChoice = persistedChoice;
+        emitRuntimeLog("info", "Persisted choice already active; skipping startup hotswap", {
+          choice: persistedChoice,
+          installedVersion: installedAtBoot,
+        });
+        return;
+      }
+    }
+
     emitRuntimeLog("info", "Applying persisted whatsapp-web.js choice", {
       choice: persistedChoice,
     });

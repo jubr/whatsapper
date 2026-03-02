@@ -65,10 +65,14 @@ const supportedWsEvents = new Set(WS_SUPPORTED_EVENTS);
 const isSocketOpen = (socket) => socket.readyState === socket.constructor.OPEN;
 const runtimeIdentity = getRuntimeIdentity();
 const APP_VERSION = process.env.APP_BUILD_VERSION || require("../package.json").version || "unknown";
+const toTitleCaseName = (name) =>
+  typeof name === "string" && name.length > 0 ? `${name[0].toUpperCase()}${name.slice(1)}` : "Whatsapper";
 const getUiVersions = () => ({
   appName: runtimeIdentity.appName,
+  appTitle: toTitleCaseName(runtimeIdentity.appName),
   appPort: runtimeIdentity.appPort,
   dirtyBuild: runtimeIdentity.dirtyBuild,
+  devBuild: runtimeIdentity.devBuild ?? runtimeIdentity.dirtyBuild,
   whatsappWebJsVersion: getRuntimeState().installedVersion || "unknown",
   appVersion: APP_VERSION,
 });
@@ -478,7 +482,10 @@ fastify.addHook("onClose", (_instance, done) => {
 });
 
 fastify.get("/", function handler(_, reply) {
-  reply.view("root.ejs", getUiVersions());
+  reply.view("root.ejs", {
+    ...getUiVersions(),
+    qrNeedsAttention: Boolean(getQr()) || !isInitialized(),
+  });
 });
 
 fastify.get("/hotswap", function handler(_, reply) {
