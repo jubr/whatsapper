@@ -284,7 +284,19 @@ const bindClientEvents = (client) => {
     emitEvent("change_state", { state });
   });
 
+  // Keep a single outbound envelope type ("message"), but source it from
+  // different wwebjs events to include both inbound and self-sent messages.
   client.on("message", (message) => {
+    if (message?.fromMe) {
+      return;
+    }
+    emitEvent("message", serializeMessage(message));
+  });
+
+  client.on("message_create", (message) => {
+    if (!message?.fromMe) {
+      return;
+    }
     emitEvent("message", serializeMessage(message));
   });
 };

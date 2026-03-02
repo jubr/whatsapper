@@ -49,6 +49,7 @@ GET ws://<host>:3000/api/v1/events/ws?events=message
 The bundled custom integration opens the websocket and emits a Home Assistant event:
 
 - `event_type: <domain>_message` (`whatsapper_message` on stable, `whatsappur_message` on dirty builds)
+- Includes both inbound and self-sent WhatsApp messages (`from_me` indicates direction)
 - Creates a Repairs issue (`qr_required`) when WhatsApp emits a `qr` event
 - Removes that Repairs issue automatically on `ready`
 - Resolves notify targets from chat/channel names to `chat_id` via `/api/v1/chats`

@@ -17,7 +17,7 @@ For the full WhatsApp API surface, use the upstream docs directly:
 2. Bundled Home Assistant custom integration source:
    - copied to `/homeassistant/custom_components/whatsapper` (through `HA_CUSTOM_COMPONENTS_PATH`)
 3. A Home Assistant event bridge:
-   - incoming WhatsApp messages become HA events of type `whatsapper_message`
+   - incoming and self-sent WhatsApp messages become HA events of type `whatsapper_message`
 4. A Repairs issue lifecycle for QR:
    - creates `qr_required` with a markdown code block when a new QR is emitted
    - removes the issue automatically when WhatsApp reports `ready`
