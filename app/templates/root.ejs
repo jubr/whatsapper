@@ -10,8 +10,8 @@
     --wa-pill-border: #2a3942;
     --wa-pill-text: #aebac1;
     --wa-unread: #00a884;
-    --wa-avatar-green: #1f9a64;
-    --wa-avatar-green-2: #38b177;
+    --wa-avatar-green: rgba(31, 154, 100, 0.5);
+    --wa-avatar-green-2: rgba(56, 177, 119, 0.5);
     --wa-tooltip-bg: rgba(15, 20, 23, 0.96);
   }
 
@@ -124,11 +124,15 @@
   }
 
   .chat-row.version-row {
-    opacity: 0.82;
+    opacity: 0.72;
   }
 
   .chat-row.version-row .pin {
     opacity: 0.78;
+  }
+
+  .chat-row.inactive-row {
+    opacity: 0.72;
   }
 
   .chat-avatar {
@@ -269,7 +273,12 @@
 </style>
 
 <%
-  const titleText = appTitle || "Whatsapper";
+  const titleText =
+    typeof appTitle !== "undefined" && appTitle
+      ? appTitle
+      : typeof appName !== "undefined" && appName
+        ? appName
+        : "Whatsapper";
   const rows = [
     {
       icon: "💬",
@@ -288,14 +297,6 @@
       attention: false,
     },
     {
-      icon: "🔐",
-      title: "QR",
-      subtitle: "Activate login if needed",
-      route: "qr",
-      meta: qrNeedsAttention ? "now" : "ok",
-      attention: Boolean(qrNeedsAttention),
-    },
-    {
       icon: "📞",
       title: "Stats",
       subtitle: "WebSocket clients and traffic",
@@ -304,12 +305,22 @@
       attention: false,
     },
     {
+      icon: "🔐",
+      title: "QR",
+      subtitle: "Activate login if needed",
+      route: "qr",
+      meta: qrNeedsAttention ? "now" : "ok",
+      attention: Boolean(qrNeedsAttention),
+      dimmed: !qrNeedsAttention,
+    },
+    {
       icon: "🧩",
       title: "Whatsapp-web-js version",
       subtitle: "Hotswap runtime version",
       route: "hotswap",
       meta: whatsappWebJsVersion || "unknown",
       attention: false,
+      pinned: true,
     },
     {
       icon: "📦",
@@ -357,7 +368,7 @@
 
   <ul class="chat-list">
     <% rows.forEach((item) => { %>
-      <li class="chat-row <%= item.pinned ? "version-row" : "" %>">
+      <li class="chat-row <%= item.pinned ? "version-row" : "" %> <%= item.dimmed ? "inactive-row" : "" %>">
         <% if (item.route) { %>
           <a class="chat-link" data-app-route="<%= item.route %>" href="<%= item.route %>">
             <div class="chat-avatar"><%= item.icon %></div>
