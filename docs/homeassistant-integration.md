@@ -129,6 +129,7 @@ If no default `chat_id`/`chat_name` is configured on a legacy YAML notify platfo
 
 The add-on now advertises Supervisor discovery (`discovery: [whatsapper]` on stable, `discovery: [whatsappur]` on dirty builds).
 When Home Assistant receives discovery, the integration opens a **discovered add-on** confirmation form and pre-fills host/port when provided by Supervisor.
+The integration also ships local brand assets (`brand/icon.png`, `brand/logo.png`, dark variants), so `whatsappur` keeps its icon after rename even if an external CDN brand path is missing.
 
 ## `configuration.yaml` (HA, legacy/manual)
 
