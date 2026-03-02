@@ -1,7 +1,7 @@
 name: "Whatsappur"
 slug: "whatsappur"
 description: "Expose whatsapp-web.js via HTTP and websocket API with Home Assistant integration files bundled."
-version: "2.0.0-0-44d7"
+version: "2.0.0-0-501d"
 startup: services
 boot: auto
 init: false
@@ -27,6 +27,6 @@ map:
     read_only: false
 environment:
   HA_CUSTOM_COMPONENTS_PATH: /homeassistant/custom_components
-  APP_BUILD_VERSION: "2.0.0-0-44d7"
+  APP_BUILD_VERSION: "2.0.0-0-501d"
   APP_RUNTIME_NAME: whatsappur
   APP_PORT: "3001"
