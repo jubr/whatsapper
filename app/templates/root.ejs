@@ -114,12 +114,6 @@
     border-top: 1px solid var(--wa-separator);
   }
 
-  .root-meta {
-    padding: 0.15rem 1rem 0.55rem;
-    color: var(--wa-muted);
-    font-size: 0.82rem;
-  }
-
   .chat-row {
     display: grid;
     grid-template-columns: 2.9rem 1fr auto;
@@ -127,6 +121,14 @@
     align-items: center;
     padding: 0.7rem 1rem;
     border-bottom: 1px solid rgba(32, 44, 51, 0.7);
+  }
+
+  .chat-row.version-row {
+    opacity: 0.82;
+  }
+
+  .chat-row.version-row .pin {
+    opacity: 0.78;
   }
 
   .chat-avatar {
@@ -286,12 +288,12 @@
       attention: false,
     },
     {
-      icon: "🧩",
-      title: "WhatsApp Web runtime",
-      subtitle: whatsappWebJsVersion || "unknown",
-      route: "hotswap",
-      meta: "open",
-      attention: false,
+      icon: "🔐",
+      title: "QR",
+      subtitle: "Activate login if needed",
+      route: "qr",
+      meta: qrNeedsAttention ? "now" : "ok",
+      attention: Boolean(qrNeedsAttention),
     },
     {
       icon: "📞",
@@ -302,20 +304,21 @@
       attention: false,
     },
     {
-      icon: "🔐",
-      title: "QR",
-      subtitle: "Activate login if needed",
-      route: "qr",
-      meta: qrNeedsAttention ? "now" : "ok",
-      attention: Boolean(qrNeedsAttention),
+      icon: "🧩",
+      title: "Whatsapp-web-js version",
+      subtitle: "Hotswap runtime version",
+      route: "hotswap",
+      meta: whatsappWebJsVersion || "unknown",
+      attention: false,
     },
     {
       icon: "📦",
-      title: `${titleText} ver`,
+      title: `${titleText} version`,
       subtitle: devBuild ? "Dev build" : "Release build",
       route: null,
       meta: appVersion || "unknown",
       attention: false,
+      pinned: true,
     },
   ];
 %>
@@ -352,27 +355,9 @@
     <span class="pill ghost-ui" data-hint="just looks good, nothing to do here">Groups 0</span>
   </div>
 
-  <div class="root-meta">
-    WhatsApp Web: <strong><%= whatsappWebJsVersion %></strong>
-    &nbsp;|&nbsp;
-    Runtime port: <strong><%= appPort %></strong>
-  </div>
-
   <ul class="chat-list">
-    <li class="chat-row ghost-ui" data-hint="just looks good, nothing to do here">
-      <div class="chat-avatar">KC</div>
-      <div class="chat-main">
-        <h3 class="chat-title">Kelly Cals</h3>
-        <div class="chat-preview">https://www.instagram.com/reel/...</div>
-      </div>
-      <div class="chat-meta">
-        <div class="chat-time">23/02/2026</div>
-        <span class="pin">📌</span>
-      </div>
-    </li>
-
     <% rows.forEach((item) => { %>
-      <li class="chat-row">
+      <li class="chat-row <%= item.pinned ? "version-row" : "" %>">
         <% if (item.route) { %>
           <a class="chat-link" data-app-route="<%= item.route %>" href="<%= item.route %>">
             <div class="chat-avatar"><%= item.icon %></div>
@@ -385,6 +370,9 @@
               <% if (item.attention) { %>
                 <span class="unread-badge">1</span>
               <% } %>
+              <% if (item.pinned) { %>
+                <span class="pin">📌</span>
+              <% } %>
             </div>
           </a>
         <% } else { %>
@@ -395,6 +383,9 @@
           </div>
           <div class="chat-meta">
             <div class="chat-time"><%= item.meta %></div>
+            <% if (item.pinned) { %>
+              <span class="pin">📌</span>
+            <% } %>
           </div>
         <% } %>
       </li>
@@ -403,7 +394,7 @@
 
   <nav class="bottom-nav">
     <a class="bottom-item active" data-app-route="chats" href="chats">
-      <span class="icon">🗂️</span>
+      <span class="icon">💬</span>
       <span>Chats</span>
     </a>
     <a class="bottom-item" data-app-route="logs" href="logs">
