@@ -54,17 +54,28 @@ Envelope format:
 }
 ```
 
-## Home Assistant `configuration.yaml`
+## Home Assistant UI setup (recommended)
+
+Use **Settings -> Devices & Services -> Add Integration -> Whatsapper**.
+
+Fields:
+
+- `host_port` (optional, empty = auto-detect)
+- `ws_path` (default `/api/v1/events/ws`)
+
+The entry title reflects the chosen host/port (`Whatsapper (<host:port>)` or `Whatsapper (auto-detect)`).
+
+## Home Assistant `configuration.yaml` (legacy)
 
 ```yaml
 whatsapper:
-  host_port: whatsapper:3000
+  host_port: localhost:3001
   ws_path: /api/v1/events/ws
 
 notify:
   - platform: whatsapper
     name: whatsapp
-    host_port: whatsapper:3000
+    host_port: localhost:3001
     # Configure one default:
     # chat_id: 123123123@g.us
     chat_name: Family Group

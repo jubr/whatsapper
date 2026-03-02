@@ -108,17 +108,29 @@ It uses websocket logs (`/api/v1/wwebjs/ws`) to show install/reload progress and
 Available refs (tags + branches) are fetched from GitHub and sorted by commit datetime descending.
 The built-in option is marked and selections are persisted to `/data`, then reapplied on startup.
 
-## `configuration.yaml` (HA)
+## UI setup (recommended)
+
+Add the integration from **Settings -> Devices & Services -> Add Integration -> Whatsapper**.
+
+The setup form asks for:
+
+- `host_port` (optional, e.g. `localhost:3001`)
+- `ws_path` (default: `/api/v1/events/ws`)
+
+Leave `host_port` empty to use auto-detection (Supervisor add-on runtime first, then localhost fallbacks).
+The integration entry title shows the active host/port value (`Whatsapper (<host:port>)` or `Whatsapper (auto-detect)`).
+
+## `configuration.yaml` (HA, legacy/manual)
 
 ```yaml
 whatsapper:
-  host_port: whatsapper:3000
+  host_port: localhost:3001
   ws_path: /api/v1/events/ws
 
 notify:
   - platform: whatsapper
     name: whatsapp
-    host_port: whatsapper:3000
+    host_port: localhost:3001
     # Configure one default:
     # chat_id: 123123123@g.us
     chat_name: Family Group

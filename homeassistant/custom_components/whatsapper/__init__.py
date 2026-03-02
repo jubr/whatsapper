@@ -9,6 +9,7 @@ from urllib.parse import quote
 
 import voluptuous as vol
 from aiohttp import WSMsgType
+from homeassistant.config_entries import ConfigEntry
 import homeassistant.helpers.config_validation as cv
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP, EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import HomeAssistant, callback
@@ -32,6 +33,8 @@ VERSION_RELOAD_DELAY_SECONDS = 10
 VERSION_MISMATCH_HANDLED_KEY = "_handled_version_mismatch_pairs"
 VERSION_RELOAD_TASK_KEY = "_version_reload_task"
 START_LISTENER_CALLBACK_KEY = "_start_listener_callback"
+STOP_LISTENER_REGISTERED_KEY = "_stop_listener_registered"
+LISTENER_SETTINGS_KEY = "_listener_settings"
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -50,6 +53,22 @@ def _build_ws_url(host_port: str, ws_path: str) -> str:
     normalized_path = ws_path if ws_path.startswith("/") else f"/{ws_path}"
     events_query = quote(",".join(WS_EVENTS), safe=",")
     return f"ws://{host_port}{normalized_path}?events={events_query}"
+
+
+def _normalize_host_port(value: Any) -> str | None:
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            return stripped
+    return None
+
+
+def _normalize_ws_path(value: Any) -> str:
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            return stripped if stripped.startswith("/") else f"/{stripped}"
+    return DEFAULT_WS_PATH
 
 
 def _to_ha_message_event(payload: dict[str, Any]) -> dict[str, Any]:
@@ -269,6 +288,54 @@ async def _handle_successful_reconnect(hass: HomeAssistant, host_port: str) -> N
     _schedule_delayed_reload(hass, reason=mismatch_key)
 
 
+@callback
+def _start_listener_task(
+    hass: HomeAssistant,
+    configured_host_port: str | None,
+    ws_path: str,
+) -> None:
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    listener_task = domain_data.get("listener_task")
+    desired_settings = (configured_host_port or "", ws_path)
+    existing_settings = domain_data.get(LISTENER_SETTINGS_KEY)
+    if listener_task and not listener_task.done():
+        if existing_settings == desired_settings:
+            return
+        listener_task.cancel()
+
+    try:
+        task = hass.async_create_background_task(
+            _listen_for_messages(hass, configured_host_port, ws_path),
+            f"{DOMAIN}_listener_task",
+        )
+    except AttributeError:
+        task = hass.async_create_task(_listen_for_messages(hass, configured_host_port, ws_path))
+    domain_data["listener_task"] = task
+    domain_data[LISTENER_SETTINGS_KEY] = desired_settings
+
+
+def _ensure_stop_listener_registered(hass: HomeAssistant) -> None:
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if domain_data.get(STOP_LISTENER_REGISTERED_KEY):
+        return
+
+    @callback
+    def _on_stop(_event=None) -> None:
+        listener_task = domain_data.get("listener_task")
+        if listener_task:
+            listener_task.cancel()
+        reload_task = domain_data.get(VERSION_RELOAD_TASK_KEY)
+        if reload_task:
+            reload_task.cancel()
+
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _on_stop)
+    domain_data[STOP_LISTENER_REGISTERED_KEY] = True
+
+
+async def _async_reload_entry_on_update(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
 async def _listen_for_messages(
     hass: HomeAssistant,
     configured_host_port: str | None,
@@ -367,32 +434,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         return True
 
     conf = config[DOMAIN]
-    configured_host_port = conf.get(CONF_HOST_PORT)
-    ws_path = conf.get(CONF_WS_PATH, DEFAULT_WS_PATH)
+    configured_host_port = _normalize_host_port(conf.get(CONF_HOST_PORT))
+    ws_path = _normalize_ws_path(conf.get(CONF_WS_PATH, DEFAULT_WS_PATH))
     domain_data = hass.data.setdefault(DOMAIN, {})
 
     @callback
     def _start_listener(_event=None) -> None:
-        listener_task = domain_data.get("listener_task")
-        if listener_task and not listener_task.done():
-            return
-        try:
-            task = hass.async_create_background_task(
-                _listen_for_messages(hass, configured_host_port, ws_path),
-                f"{DOMAIN}_listener_task",
-            )
-        except AttributeError:
-            task = hass.async_create_task(_listen_for_messages(hass, configured_host_port, ws_path))
-        domain_data["listener_task"] = task
-
-    @callback
-    def _on_stop(_event=None) -> None:
-        listener_task = domain_data.get("listener_task")
-        if listener_task:
-            listener_task.cancel()
-        reload_task = domain_data.get(VERSION_RELOAD_TASK_KEY)
-        if reload_task:
-            reload_task.cancel()
+        _start_listener_task(hass, configured_host_port, ws_path)
 
     if hass.is_running:
         hass.loop.call_soon(_start_listener)
@@ -400,6 +448,54 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _start_listener)
 
     domain_data[START_LISTENER_CALLBACK_KEY] = _start_listener
-    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _on_stop)
+    _ensure_stop_listener_registered(hass)
+    return True
+
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Whatsapper from a config entry (UI setup)."""
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    options = dict(entry.options or {})
+    data = dict(entry.data or {})
+
+    configured_host_port = _normalize_host_port(options.get(CONF_HOST_PORT, data.get(CONF_HOST_PORT)))
+    ws_path = _normalize_ws_path(options.get(CONF_WS_PATH, data.get(CONF_WS_PATH, DEFAULT_WS_PATH)))
+
+    @callback
+    def _start_listener(_event=None) -> None:
+        _start_listener_task(hass, configured_host_port, ws_path)
+
+    if hass.is_running:
+        hass.loop.call_soon(_start_listener)
+    else:
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _start_listener)
+
+    domain_data[START_LISTENER_CALLBACK_KEY] = _start_listener
+    _ensure_stop_listener_registered(hass)
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry_on_update))
+    return True
+
+
+async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
+    """Unload a Whatsapper config entry."""
+    domain_data = hass.data.setdefault(DOMAIN, {})
+
+    listener_task = domain_data.get("listener_task")
+    if listener_task and not listener_task.done():
+        listener_task.cancel()
+        try:
+            await listener_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.debug("Listener task ended with error during unload: %s", err)
+
+    reload_task = domain_data.get(VERSION_RELOAD_TASK_KEY)
+    if reload_task and not reload_task.done():
+        reload_task.cancel()
+
+    domain_data.pop("listener_task", None)
+    domain_data.pop(LISTENER_SETTINGS_KEY, None)
+    domain_data.pop(START_LISTENER_CALLBACK_KEY, None)
     return True
 

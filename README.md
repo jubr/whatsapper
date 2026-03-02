@@ -160,17 +160,25 @@ docker compose -f docker-compose.yaml -f docker-compose.homeassistant.yaml up -d
 This overlay mounts the same `ha-custom-components` volume into Home Assistant at `/config/custom_components`, so HA can load the bundled `whatsapper` integration.
 If the integration is not shown on first boot, restart Home Assistant once after the `whatsapper` container is running.
 
-Then configure Home Assistant with the Docker service name as host:
+Then configure Home Assistant via UI (recommended):
+
+- **Settings -> Devices & Services -> Add Integration -> Whatsapper**
+- `host_port`: optional (leave empty for auto-detect)
+- `ws_path`: `/api/v1/events/ws`
+
+The integration entry title shows host/port (`Whatsapper (<host:port>)` or `Whatsapper (auto-detect)`).
+
+Legacy YAML setup is still supported:
 
 ```yaml
 whatsapper:
-  host_port: whatsapper:3000
+  host_port: localhost:3001
   ws_path: /api/v1/events/ws
 
 notify:
   - platform: whatsapper
     name: whatsapp
-    host_port: whatsapper:3000
+    host_port: localhost:3001
     # Choose one default target:
     # chat_id: 123123123@g.us
     chat_name: Family Group
