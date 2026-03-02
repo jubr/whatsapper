@@ -35,6 +35,8 @@ class WhatsapperConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Whatsapper."""
 
     VERSION = 1
+    _hassio_discovery_config: dict[str, Any] | None = None
+    _hassio_addon_name: str = "Whatsapper add-on"
 
     @staticmethod
     @callback
@@ -71,22 +73,48 @@ class WhatsapperConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
 
-        host_port = ""
-        if isinstance(discovery_info.config, dict):
-            host = discovery_info.config.get("host")
-            port = discovery_info.config.get("port")
+        await self._async_handle_discovery_without_unique_id()
+        self._hassio_discovery_config = (
+            dict(discovery_info.config) if isinstance(discovery_info.config, dict) else {}
+        )
+        if isinstance(discovery_info.name, str) and discovery_info.name.strip():
+            self._hassio_addon_name = discovery_info.name.strip()
+        return await self.async_step_hassio_confirm()
+
+    async def async_step_hassio_confirm(self, user_input: dict[str, Any] | None = None):
+        """Confirm Supervisor discovery and allow host/port override."""
+        discovered_host_port = ""
+        if isinstance(self._hassio_discovery_config, dict):
+            host = self._hassio_discovery_config.get("host")
+            port = self._hassio_discovery_config.get("port")
             if isinstance(host, str) and host.strip():
                 if isinstance(port, int) and 1 <= port <= 65535:
-                    host_port = f"{host.strip()}:{port}"
+                    discovered_host_port = f"{host.strip()}:{port}"
                 elif isinstance(port, str) and port.strip().isdigit():
-                    host_port = f"{host.strip()}:{int(port.strip())}"
+                    discovered_host_port = f"{host.strip()}:{int(port.strip())}"
 
-        return self.async_create_entry(
-            title=_build_entry_title(host_port),
-            data={
-                CONF_HOST_PORT: host_port,
-                CONF_WS_PATH: DEFAULT_WS_PATH,
+        if user_input is not None:
+            host_port = _normalize_host_port(user_input.get(CONF_HOST_PORT))
+            ws_path = _normalize_ws_path(user_input.get(CONF_WS_PATH))
+            return self.async_create_entry(
+                title=_build_entry_title(host_port),
+                data={
+                    CONF_HOST_PORT: host_port,
+                    CONF_WS_PATH: ws_path,
+                },
+            )
+
+        return self.async_show_form(
+            step_id="hassio_confirm",
+            description_placeholders={
+                "addon": self._hassio_addon_name,
             },
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_HOST_PORT, default=discovered_host_port): str,
+                    vol.Optional(CONF_WS_PATH, default=DEFAULT_WS_PATH): str,
+                }
+            ),
         )
 
 

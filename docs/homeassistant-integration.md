@@ -120,6 +120,11 @@ The setup form asks for:
 Leave `host_port` empty to use auto-detection (Supervisor add-on runtime first, then localhost fallbacks).
 The integration entry title shows the active host/port value (`Whatsapper (<host:port>)` or `Whatsapper (auto-detect)`).
 
+### Supervisor discovery
+
+The add-on now advertises Supervisor discovery (`discovery: [whatsapper]` on stable, `discovery: [whatsappur]` on dirty builds).
+When Home Assistant receives discovery, the integration opens a **discovered add-on** confirmation form and pre-fills host/port when provided by Supervisor.
+
 ## `configuration.yaml` (HA, legacy/manual)
 
 ```yaml

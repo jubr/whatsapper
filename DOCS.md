@@ -64,6 +64,7 @@ Fields:
 - `ws_path` (default `/api/v1/events/ws`)
 
 The entry title reflects the chosen host/port (`Whatsapper (<host:port>)` or `Whatsapper (auto-detect)`).
+The add-on also publishes Supervisor discovery, so Home Assistant can trigger a discovered setup flow.
 
 ## Home Assistant `configuration.yaml` (legacy)
 

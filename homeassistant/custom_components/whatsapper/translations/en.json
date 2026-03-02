@@ -8,6 +8,14 @@
           "host_port": "Host and port (optional, e.g. localhost:3001)",
           "ws_path": "WebSocket path"
         }
+      },
+      "hassio_confirm": {
+        "title": "Discovered add-on",
+        "description": "Home Assistant discovered {addon}. Confirm or adjust the connection settings before creating the integration entry.",
+        "data": {
+          "host_port": "Host and port (optional, empty = auto-detect)",
+          "ws_path": "WebSocket path"
+        }
       }
     }
   },
