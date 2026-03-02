@@ -388,6 +388,7 @@ const getRuntimeState = () => ({
   currentChoice,
   bundledDependencySpec: BUNDLED_DEP_SPEC,
   installedVersion: getInstalledVersion(),
+  appBuildVersion: APP_BUILD_VERSION || packageJson.version || "unknown",
   appName: APP_RUNTIME_NAME,
   appPort: APP_RUNTIME_PORT,
   dirtyBuild: IS_DIRTY_BUILD,
