@@ -71,6 +71,26 @@ const eventSubscribers = new Set();
 const runtimeLogSubscribers = new Set();
 const runtimeLogBacklog = [];
 
+const sanitizeLogValue = (value) => String(value).replace(/\s+/g, " ").trim();
+
+const formatLogDetails = (details) => {
+  if (!details || typeof details !== "object") {
+    return "";
+  }
+  const parts = [];
+  for (const [key, value] of Object.entries(details)) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+    if (typeof value === "object") {
+      parts.push(`${key}=[complex]`);
+      continue;
+    }
+    parts.push(`${key}=${sanitizeLogValue(value)}`);
+  }
+  return parts.join(" ");
+};
+
 const emitEvent = (event, data) => {
   const envelope = {
     eventId: randomUUID(),
@@ -96,6 +116,12 @@ const emitRuntimeLog = (level, message, details = {}) => {
     message,
     details,
   };
+
+  const detailsText = formatLogDetails(details);
+  const printable = detailsText
+    ? `[${entry.timestamp}] [${level}] ${message} | ${detailsText}`
+    : `[${entry.timestamp}] [${level}] ${message}`;
+  console.log(printable);
 
   runtimeLogBacklog.push(entry);
   if (runtimeLogBacklog.length > LOG_BACKLOG_LIMIT) {
@@ -342,7 +368,6 @@ const bindClientEvents = (client) => {
     receivedQrConsoleSingle = null;
     receivedQrConsoleBlock = null;
     emitRuntimeLog("info", "Client is ready");
-    console.log("Client is ready!");
     emitEvent("ready", { initialized: true });
   });
 
@@ -709,6 +734,7 @@ module.exports = {
   subscribeToEvents,
   subscribeToRuntimeLogs,
   getRuntimeLogs: () => [...runtimeLogBacklog],
+  writeRuntimeLog: emitRuntimeLog,
   getRuntimeState,
   listGithubRefs,
   swapToChoice,

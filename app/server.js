@@ -15,6 +15,7 @@ const {
   subscribeToEvents,
   subscribeToRuntimeLogs,
   getRuntimeLogs,
+  writeRuntimeLog,
   getRuntimeState,
   getRuntimeIdentity,
   listGithubRefs,
@@ -24,7 +25,7 @@ const {
 } = require("./whatsappClient");
 
 // web server configuration
-const fastify = require("fastify")({ logger: true });
+const fastify = require("fastify")({ logger: false });
 fastify.register(require("@fastify/websocket"));
 
 fastify.register(require("@fastify/view"), {
@@ -34,10 +35,27 @@ fastify.register(require("@fastify/view"), {
   root: path.join(__dirname, "templates"),
 });
 
+const logServer = (level, message, details = {}) => {
+  writeRuntimeLog(level, message, { scope: "server", ...details });
+};
+
 fastify.addHook("onRequest", (request, _reply, done) => {
+  request._logStartedAt = Date.now();
   if (typeof request.raw.url === "string" && request.raw.url.startsWith("//")) {
     request.raw.url = request.raw.url.replace(/^\/+/, "/");
   }
+  done();
+});
+
+fastify.addHook("onResponse", (request, reply, done) => {
+  const startedAt = Number.isFinite(request._logStartedAt) ? request._logStartedAt : Date.now();
+  const durationMs = Date.now() - startedAt;
+  logServer("info", "HTTP request", {
+    method: request.method,
+    path: request.raw.url || request.url,
+    status: reply.statusCode,
+    durationMs,
+  });
   done();
 });
 
@@ -73,12 +91,15 @@ const wsStats = {
 
 const wsClients = new Map();
 
-const summarizeWsPayload = (payload) => {
-  const text = typeof payload === "string" ? payload : JSON.stringify(payload);
-  if (typeof text !== "string") {
-    return "[non-string payload]";
+const getPayloadSize = (payload) => {
+  if (typeof payload === "string") {
+    return payload.length;
   }
-  return text.length > 600 ? `${text.slice(0, 600)}...` : text;
+  try {
+    return JSON.stringify(payload).length;
+  } catch (_) {
+    return 0;
+  }
 };
 
 const registerWsClient = ({ channel, socket, request, selectedEvents = null }) => {
@@ -106,15 +127,14 @@ const registerWsClient = ({ channel, socket, request, selectedEvents = null }) =
     wsStats.runtimeConnectionsAccepted += 1;
   }
 
-  fastify.log.info(
-    {
-      wsChannel: client.channel,
-      wsClientId: client.id,
-      remoteAddress: client.remoteAddress,
-      selectedEvents: client.selectedEvents,
-    },
-    "WebSocket client connected",
-  );
+  logServer("info", "WebSocket connected", {
+    channel: client.channel,
+    clientId: client.id,
+    remoteAddress: client.remoteAddress || "-",
+    selectedEvents: Array.isArray(client.selectedEvents)
+      ? client.selectedEvents.join(",")
+      : "-",
+  });
   return client;
 };
 
@@ -127,23 +147,29 @@ const unregisterWsClient = (client, reason = "unknown") => {
   }
 
   wsStats.totalConnectionsClosed += 1;
-  fastify.log.info(
-    { wsChannel: client.channel, wsClientId: client.id, reason },
-    "WebSocket client disconnected",
-  );
+  logServer("info", "WebSocket disconnected", {
+    channel: client.channel,
+    clientId: client.id,
+    reason,
+  });
 };
 
-const logWsTraffic = ({ client, direction, payload, messageType = null }) => {
-  fastify.log.info(
-    {
-      wsChannel: client.channel,
-      wsClientId: client.id,
-      direction,
-      messageType,
-      payload: summarizeWsPayload(payload),
-    },
-    "WebSocket message",
-  );
+const logWsTraffic = ({ client, direction, payload, messageType = null, parsedPayload = null }) => {
+  const details = {
+    channel: client.channel,
+    clientId: client.id,
+    direction,
+    type: messageType || "raw",
+    size: getPayloadSize(payload),
+  };
+  if (parsedPayload?.type === "rpc") {
+    details.rpcAction = parsedPayload.action || "unknown";
+    details.requestId = parsedPayload.requestId || "-";
+  } else if (parsedPayload?.type === "rpc_result") {
+    details.requestId = parsedPayload.requestId || "-";
+    details.rpcOk = parsedPayload.ok === false ? "false" : "true";
+  }
+  logServer("info", "WebSocket message", details);
 };
 
 const markWsInbound = (client, rawPayload, parsedPayload = null) => {
@@ -156,10 +182,12 @@ const markWsInbound = (client, rawPayload, parsedPayload = null) => {
     direction: "in",
     payload: rawPayload,
     messageType: client.lastInType,
+    parsedPayload,
   });
 };
 
-const sendWsPayload = (client, payload) => {
+const sendWsPayload = (client, payload, options = {}) => {
+  const suppressTrafficLog = Boolean(options.suppressTrafficLog);
   if (!isSocketOpen(client.socket)) {
     unregisterWsClient(client, "socket_closed");
     return false;
@@ -173,18 +201,22 @@ const sendWsPayload = (client, payload) => {
     wsStats.messagesOut += 1;
     client.lastOutAt = new Date().toISOString();
     client.lastOutType = payload?.type || payload?.event || "raw";
-    logWsTraffic({
-      client,
-      direction: "out",
-      payload: serialized,
-      messageType: client.lastOutType,
-    });
+    if (!suppressTrafficLog) {
+      logWsTraffic({
+        client,
+        direction: "out",
+        payload,
+        messageType: client.lastOutType,
+        parsedPayload: typeof payload === "object" ? payload : null,
+      });
+    }
     return true;
   } catch (error) {
-    fastify.log.warn(
-      { error, wsChannel: client.channel, wsClientId: client.id },
-      "Failed to send websocket payload",
-    );
+    logServer("warn", "Failed to send websocket payload", {
+      channel: client.channel,
+      clientId: client.id,
+      error: String(error?.message || error),
+    });
     unregisterWsClient(client, "send_failed");
     return false;
   }
@@ -239,7 +271,7 @@ const buildQrImageBuffer = async (qrPayload) => {
       },
     });
   } catch (error) {
-    fastify.log.warn({ error }, "Failed to render QR image");
+    logServer("warn", "Failed to render QR image", { error: String(error?.message || error) });
     return null;
   }
 };
@@ -258,10 +290,33 @@ const listChats = async () => {
   }
 
   const resp = await activeClient.getChats();
+  const formatMessageTimestamp = (rawTimestamp) => {
+    const timestampNumber = Number(rawTimestamp);
+    if (!Number.isFinite(timestampNumber) || timestampNumber <= 0) {
+      return null;
+    }
+    const date = new Date(timestampNumber * 1000);
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+    const now = new Date();
+    const sameDay = date.toDateString() === now.toDateString();
+    if (sameDay) {
+      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+    return date.toLocaleDateString();
+  };
   return resp.map((chat) => ({
     name: chat.name || "",
     id: chat.id._serialized,
     isGroup: Boolean(chat.isGroup),
+    unreadCount: Number.isFinite(chat.unreadCount) ? chat.unreadCount : 0,
+    isMuted: Boolean(chat.isMuted),
+    lastMessagePreview:
+      (typeof chat.lastMessage?.body === "string" && chat.lastMessage.body.trim()) ||
+      (chat.lastMessage?.hasMedia ? "[media]" : ""),
+    lastMessageFromMe: Boolean(chat.lastMessage?.fromMe),
+    lastMessageAt: formatMessageTimestamp(chat.lastMessage?.timestamp),
   }));
 };
 
@@ -402,7 +457,7 @@ const broadcastEvent = (envelope) => {
 const broadcastRuntimeLog = (entry) => {
   for (const client of hotswapWsSubscriptions) {
     wsStats.runtimeBroadcasts += 1;
-    if (!sendWsPayload(client, entry)) {
+    if (!sendWsPayload(client, entry, { suppressTrafficLog: true })) {
       hotswapWsSubscriptions.delete(client);
     }
   }
@@ -428,6 +483,10 @@ fastify.get("/", function handler(_, reply) {
 
 fastify.get("/hotswap", function handler(_, reply) {
   reply.view("hotswap.ejs", getUiVersions());
+});
+
+fastify.get("/logs", function handler(_, reply) {
+  reply.view("logs.ejs", getUiVersions());
 });
 
 fastify.get("/ws-clients", function handler(_, reply) {
@@ -653,9 +712,22 @@ fastify.after(() => {
           if (payload?.type === "rpc") {
             wsStats.rpcRequests += 1;
             const requestId = typeof payload.requestId === "string" ? payload.requestId : null;
+            logServer("info", "RPC request", {
+              channel: "events",
+              clientId: client.id,
+              action: payload.action || "unknown",
+              requestId: requestId || "-",
+            });
             try {
               const result = await handleWsRpcRequest(payload);
               wsStats.rpcResponses += 1;
+              logServer("info", "RPC response", {
+                channel: "events",
+                clientId: client.id,
+                action: payload.action || "unknown",
+                requestId: requestId || "-",
+                ok: "true",
+              });
               sendWsPayload(client, {
                 type: "rpc_result",
                 requestId,
@@ -665,6 +737,14 @@ fastify.after(() => {
               });
             } catch (error) {
               wsStats.rpcErrors += 1;
+              logServer("warn", "RPC response", {
+                channel: "events",
+                clientId: client.id,
+                action: payload.action || "unknown",
+                requestId: requestId || "-",
+                ok: "false",
+                error: String(error?.message || error),
+              });
               sendWsPayload(client, {
                 type: "rpc_result",
                 requestId,
@@ -745,6 +825,10 @@ fastify.after(() => {
           }
 
           if (payload?.type === "refresh_refs") {
+            logServer("info", "Runtime refs refresh requested", {
+              channel: "runtime",
+              clientId: client.id,
+            });
             const refsPayload = await listGithubRefs({ refresh: true });
             sendWsPayload(client, {
               type: "refs",
@@ -770,7 +854,11 @@ fastify.after(() => {
 
 fastify.listen({ port: runtimeIdentity.appPort, host: "0.0.0.0" }, (err) => {
   if (err) {
-    fastify.log.error(err);
+    logServer("error", "Fastify listen failed", { error: String(err?.message || err) });
     process.exit(1);
   }
+  logServer("info", "HTTP server listening", {
+    host: "0.0.0.0",
+    port: runtimeIdentity.appPort,
+  });
 });

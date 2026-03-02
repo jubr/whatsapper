@@ -188,8 +188,22 @@
     const appendStructuredLog = (entry) => {
       const stamp = toDateString(entry.timestamp);
       const level = entry.level || "info";
-      const message = entry.message || JSON.stringify(entry);
-      appendLogLine(`[${stamp}] [${level}] ${message}`, level);
+      const message = entry.message || "log";
+      const detailsText =
+        entry.details && typeof entry.details === "object"
+          ? Object.entries(entry.details)
+              .filter(([, value]) => value !== null && value !== undefined)
+              .map(([key, value]) => {
+                if (typeof value === "object") {
+                  return `${key}=[complex]`;
+                }
+                return `${key}=${String(value).replace(/\s+/g, " ").trim()}`;
+              })
+              .filter(Boolean)
+              .join(" ")
+          : "";
+      const suffix = detailsText ? ` | ${detailsText}` : "";
+      appendLogLine(`[${stamp}] [${level}] ${message}${suffix}`, level);
     };
 
     const renderRuntimeState = () => {

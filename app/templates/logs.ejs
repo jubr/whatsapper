@@ -1,0 +1,192 @@
+<style>
+  :root {
+    color-scheme: dark;
+    --wa-bg: #0b141a;
+    --wa-card: #111b21;
+    --wa-card-2: #1f2c33;
+    --wa-text: #e9edef;
+    --wa-muted: #aebac1;
+    --wa-green: #25d366;
+  }
+
+  body {
+    margin: 0;
+    background: radial-gradient(circle at top right, #123326 0%, var(--wa-bg) 45%);
+    color: var(--wa-text);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  .page {
+    max-width: 78rem;
+    margin: 1.8rem auto;
+    padding: 1.4rem;
+    border-radius: 0.9rem;
+    background: linear-gradient(180deg, var(--wa-card) 0%, var(--wa-card-2) 100%);
+    border: 1px solid #233138;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  }
+
+  .meta {
+    color: var(--wa-muted);
+    margin-bottom: 0.85rem;
+  }
+
+  a {
+    color: var(--wa-green);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  a:hover {
+    color: #6cf09f;
+    text-decoration: underline;
+  }
+
+  .log-box {
+    border: 1px solid #2d3b42;
+    padding: 0.75rem;
+    background: #0f1519;
+    color: #d7e5dc;
+    height: 34rem;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family:
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      "Liberation Mono",
+      "Courier New",
+      monospace;
+    border-radius: 0.55rem;
+  }
+</style>
+
+<div class="page">
+  <h1><%= appName %>: consolidated logs</h1>
+  <p class="meta">
+    Runtime <code>whatsapp-web.js</code> version: <strong><%= whatsappWebJsVersion %></strong>
+    |
+    Runtime port: <strong><%= appPort %></strong>
+  </p>
+  <p><a data-app-route="" href=".">Back</a></p>
+  <div id="logBox" class="log-box"></div>
+</div>
+
+<script>
+  (function () {
+    const logBox = document.getElementById("logBox");
+    let runtimeWs = null;
+    let hasRenderedSnapshotLogs = false;
+
+    const getBasePath = () => {
+      const pathname = location.pathname || "/";
+      const segments = pathname.split("/").filter(Boolean);
+      if (segments.length > 0 && segments[segments.length - 1] === "logs") {
+        segments.pop();
+      }
+      return segments.length === 0 ? "/" : `/${segments.join("/")}/`;
+    };
+
+    const buildAppUrl = (relativePath) =>
+      `${getBasePath()}${String(relativePath || "").replace(/^\/+/, "")}`;
+
+    const toDateString = (value) => {
+      if (!value) return "n/a";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? value : date.toISOString();
+    };
+
+    const formatDetails = (details) => {
+      if (!details || typeof details !== "object") {
+        return "";
+      }
+      const parts = [];
+      Object.entries(details).forEach(([key, value]) => {
+        if (value === null || value === undefined) {
+          return;
+        }
+        if (typeof value === "object") {
+          parts.push(`${key}=[complex]`);
+          return;
+        }
+        const text = String(value).replace(/\s+/g, " ").trim();
+        if (text) {
+          parts.push(`${key}=${text}`);
+        }
+      });
+      return parts.join(" ");
+    };
+
+    const appendLogLine = (line, level) => {
+      const el = document.createElement("div");
+      if (level === "error") {
+        el.style.color = "#ff8f8f";
+      } else if (level === "warn") {
+        el.style.color = "#f8d66d";
+      } else if (level === "info") {
+        el.style.color = "#86efac";
+      } else {
+        el.style.color = "#ddd";
+      }
+      el.textContent = line;
+      logBox.appendChild(el);
+      logBox.scrollTop = logBox.scrollHeight;
+    };
+
+    const appendStructuredLog = (entry) => {
+      const stamp = toDateString(entry.timestamp);
+      const level = entry.level || "info";
+      const detailsText = formatDetails(entry.details);
+      const message = entry.message || "log";
+      const suffix = detailsText ? ` | ${detailsText}` : "";
+      appendLogLine(`[${stamp}] [${level}] ${message}${suffix}`, level);
+    };
+
+    const openRuntimeSocket = () => {
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      const runtimeWsUrl = new URL(buildAppUrl("api/v1/wwebjs/ws"), location.origin);
+      runtimeWsUrl.protocol = `${protocol}:`;
+      runtimeWs = new WebSocket(runtimeWsUrl.toString());
+
+      runtimeWs.addEventListener("open", () => {
+        appendLogLine("[ws] Connected to runtime log stream", "info");
+      });
+
+      runtimeWs.addEventListener("close", () => {
+        appendLogLine("[ws] Runtime log stream disconnected. Reconnecting...", "warn");
+        setTimeout(openRuntimeSocket, 2000);
+      });
+
+      runtimeWs.addEventListener("error", () => {
+        appendLogLine("[ws] Runtime log stream error", "error");
+      });
+
+      runtimeWs.addEventListener("message", (event) => {
+        let payload;
+        try {
+          payload = JSON.parse(event.data);
+        } catch (_) {
+          appendLogLine(`[ws] ${event.data}`, "info");
+          return;
+        }
+
+        if (payload.type === "snapshot") {
+          if (!hasRenderedSnapshotLogs && Array.isArray(payload.logs)) {
+            logBox.innerHTML = "";
+            payload.logs.forEach((entry) => appendStructuredLog(entry));
+            hasRenderedSnapshotLogs = true;
+          }
+          return;
+        }
+
+        if (payload.type === "log") {
+          appendStructuredLog(payload);
+        }
+      });
+    };
+
+    openRuntimeSocket();
+  })();
+</script>
