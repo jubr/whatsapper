@@ -65,7 +65,7 @@ Fields:
 
 The entry title reflects the chosen host/port (`Whatsapper (<host:port>)` or `Whatsapper (auto-detect)`).
 The add-on also publishes Supervisor discovery, so Home Assistant can trigger a discovered setup flow.
-UI config-entry setup auto-loads `notify.whatsapp`.
+UI config-entry setup auto-loads `notify.whatsapper` (dirty builds: `notify.whatsappur`).
 
 ## Home Assistant `configuration.yaml` (legacy)
 
@@ -76,7 +76,7 @@ whatsapper:
 
 notify:
   - platform: whatsapper
-    name: whatsapp
+    name: whatsapper
     host_port: localhost:3000
     # Configure one default:
     # chat_id: 123123123@g.us
@@ -119,7 +119,7 @@ automation:
     variables:
       ping_suffix: "{{ trigger.event.data.body | regex_findall_index('^whatsapper-ping(.*)$', 0) }}"
     action:
-      - service: notify.whatsapp
+      - service: notify.whatsapper
         data:
           target:
             - "{{ trigger.event.data.chat_id }}"

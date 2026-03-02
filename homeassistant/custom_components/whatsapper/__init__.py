@@ -37,7 +37,7 @@ START_LISTENER_CALLBACK_KEY = "_start_listener_callback"
 STOP_LISTENER_REGISTERED_KEY = "_stop_listener_registered"
 LISTENER_SETTINGS_KEY = "_listener_settings"
 NOTIFY_PLATFORM_LOADED_KEY = "_notify_platform_loaded"
-DEFAULT_NOTIFY_SERVICE_NAME = "whatsapp"
+DEFAULT_NOTIFY_SERVICE_NAME = DOMAIN
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -160,7 +160,7 @@ def _select_notify_service_name(hass: HomeAssistant) -> str | None:
         return None
 
     service_names = set(notify_services.keys())
-    for preferred in ("whatsapp", DOMAIN, "whatsapper", "whatsappur"):
+    for preferred in (DOMAIN, "whatsapper", "whatsappur", "whatsapp"):
         if preferred in service_names:
             return preferred
 
@@ -339,7 +339,7 @@ async def _ensure_auto_notify_platform(
     hass: HomeAssistant,
     ws_path: str,
 ) -> None:
-    """Auto-load notify platform so notify.whatsapp exists without YAML."""
+    """Auto-load notify platform so notify.<domain> exists without YAML."""
     domain_data = hass.data.setdefault(DOMAIN, {})
     if domain_data.get(NOTIFY_PLATFORM_LOADED_KEY):
         return

@@ -120,7 +120,7 @@ The setup form asks for:
 Leave `host_port` empty to use auto-detection (Supervisor add-on runtime first, then localhost fallbacks).
 The integration entry title shows the active host/port value (`Whatsapper (<host:port>)` or `Whatsapper (auto-detect)`).
 
-When configured via UI config entry, the integration also auto-loads `notify.whatsapp`.
+When configured via UI config entry, the integration also auto-loads `notify.whatsapper` (dirty builds: `notify.whatsappur`).
 If no default `chat_id`/`chat_name` is configured on a legacy YAML notify platform, pass `target` explicitly in service calls.
 
 ### Supervisor discovery
@@ -137,7 +137,7 @@ whatsapper:
 
 notify:
   - platform: whatsapper
-    name: whatsapp
+    name: whatsapper
     host_port: localhost:3000
     # Configure one default:
     # chat_id: 123123123@g.us
@@ -146,7 +146,7 @@ notify:
 
 ### Target lookup behavior
 
-`notify.whatsapp` accepts:
+`notify.whatsapper` (dirty builds: `notify.whatsappur`) accepts:
 
 - `target: ["123123123@g.us"]` (direct ID)
 - `target: ["Family Group"]` (resolved by name)
@@ -174,7 +174,7 @@ automation:
     variables:
       ping_suffix: "{{ trigger.event.data.body | regex_findall_index('^whatsapper-ping(.*)$', 0) }}"
     action:
-      - service: notify.whatsapp
+      - service: notify.whatsapper
         data:
           target:
             - "{{ trigger.event.data.chat_id }}"
