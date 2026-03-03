@@ -440,6 +440,37 @@ const handleWsRpcRequest = async (rpcPayload) => {
       return { chatId, messageId: response?.id?._serialized || null };
     }
 
+    case "react_message": {
+      const messageId = typeof params.messageId === "string" ? params.messageId.trim() : "";
+      const reaction = typeof params.reaction === "string" ? params.reaction.trim() : "";
+      if (!messageId) {
+        throw new Error("Missing params.messageId for react_message");
+      }
+      if (!reaction) {
+        throw new Error("Missing params.reaction for react_message");
+      }
+      const activeClient = ensureActiveClient();
+      if (!activeClient) {
+        throw new Error("Client not initialized");
+      }
+      if (typeof activeClient.getMessageById !== "function") {
+        throw new Error("Client does not support getMessageById");
+      }
+      const targetMessage = await activeClient.getMessageById(messageId);
+      if (!targetMessage) {
+        throw new Error(`Message '${messageId}' not found`);
+      }
+      if (typeof targetMessage.react !== "function") {
+        throw new Error("Target message does not support react()");
+      }
+      await targetMessage.react(reaction);
+      return {
+        messageId,
+        reaction,
+        reacted: true,
+      };
+    }
+
     default:
       throw new Error(`Unsupported rpc action '${action}'`);
   }
