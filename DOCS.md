@@ -115,9 +115,15 @@ automation:
         event_type: whatsapper_message
     condition:
       - condition: template
-        value_template: "{{ trigger.event.data.body is match('^whatsapper-ping(.*)$') }}"
+        value_template: "{{ (trigger.event.data.body | default('')) is match('^whatsapper-ping(.*)$') }}"
     variables:
-      ping_suffix: "{{ trigger.event.data.body | regex_findall_index('^whatsapper-ping(.*)$', 0) }}"
+      ping_suffix: >-
+        {{
+          (trigger.event.data.body | default(''))
+          | regex_findall('^whatsapper-ping(.*)$')
+          | first
+          | default('')
+        }}
     action:
       - service: notify.whatsapper
         data:

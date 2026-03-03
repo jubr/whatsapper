@@ -173,9 +173,15 @@ automation:
         event_type: whatsapper_message
     condition:
       - condition: template
-        value_template: "{{ trigger.event.data.body is match('^whatsapper-ping(.*)$') }}"
+        value_template: "{{ (trigger.event.data.body | default('')) is match('^whatsapper-ping(.*)$') }}"
     variables:
-      ping_suffix: "{{ trigger.event.data.body | regex_findall_index('^whatsapper-ping(.*)$', 0) }}"
+      ping_suffix: >-
+        {{
+          (trigger.event.data.body | default(''))
+          | regex_findall('^whatsapper-ping(.*)$')
+          | first
+          | default('')
+        }}
     action:
       - service: notify.whatsapper
         data:
@@ -191,4 +197,4 @@ See:
 - [`docs/automation-translate-home-assistant-chat.yaml`](./automation-translate-home-assistant-chat.yaml)
 
 It listens to hardcoded `chat_name: Home Assistant`, calls the public Google translate endpoint,
-quote-replies with a flag (`🇵🇹` / `🇳🇱`), and avoids loops by ignoring messages that already start with a translator flag.
+posts the translated text as a regular message, and uses message reactions for fast progress/fail/success state.
