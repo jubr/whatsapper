@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import unicodedata
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any
 from uuid import uuid4
@@ -33,7 +34,6 @@ ATTR_IMAGE = "image"
 ATTR_IMAGE_TYPE = "image_type"
 ATTR_IMAGE_NAME = "image_name"
 ATTR_REPLY_TO_MESSAGE_ID = "reply_to_message_id"
-REACTION_HOURGLASS = "⏳"
 DEFAULT_WS_PATH = "/api/v1/events/ws"
 
 
@@ -77,6 +77,30 @@ class WhatsapperNotificationService(BaseNotificationService):
     @staticmethod
     def _is_chat_id(value: str | None) -> bool:
         return isinstance(value, str) and "@" in value
+
+    @staticmethod
+    def _extract_reaction_candidate(value: str | None) -> str | None:
+        """Return an emoji-like candidate suitable for msg.react(), else None."""
+        if not isinstance(value, str):
+            return None
+        candidate = value.strip()
+        if not candidate or "\n" in candidate:
+            return None
+        # Keep reaction-only shortcut strict enough to avoid accidental punctuation reactions.
+        if len(candidate) > 8:
+            return None
+
+        has_symbol = False
+        for char in candidate:
+            if char.isspace():
+                return None
+            category = unicodedata.category(char)
+            if category.startswith(("L", "N")):
+                return None
+            if category.startswith("S") or char in ("\u200d", "\ufe0f"):
+                has_symbol = True
+
+        return candidate if has_symbol else None
 
     async def _get_host_port(self, refresh: bool = False) -> str:
         return await async_detect_host_port(
@@ -213,15 +237,17 @@ class WhatsapperNotificationService(BaseNotificationService):
             msg = f"{title}\n\n{raw_message}" if title else raw_message
             msg = msg.replace("\\n", "\n")
 
+            reaction_candidate = self._extract_reaction_candidate(msg)
             # Special behavior:
-            # If the payload is only the hourglass emoji and includes a reply target,
-            # perform a WhatsApp reaction instead of sending a text message.
-            if reply_to_message_id and msg.strip() == REACTION_HOURGLASS:
+            # If payload is a single emoji-like reaction and includes reply_to_message_id,
+            # perform a reaction toggle instead of sending a text message.
+            if reply_to_message_id and reaction_candidate:
                 await self._ws_rpc_request(
                     "react_message",
                     {
                         "messageId": reply_to_message_id,
-                        "reaction": REACTION_HOURGLASS,
+                        "reaction": reaction_candidate,
+                        "toggle": True,
                     },
                 )
                 return

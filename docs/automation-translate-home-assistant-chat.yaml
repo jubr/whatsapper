@@ -36,7 +36,14 @@ automation:
     mode: queued
     max: 10
     variables:
+      # Configurable variables
       use_dirty_build: false
+      cfg_lang_nl: "nl"
+      cfg_lang_pt: "pt"
+      cfg_chat_name: "Home Assistant"
+      cfg_reaction_busy: "🐟"
+      cfg_reaction_fail: "❌"
+      cfg_confidence_threshold: 0.85
       selected_event_type: >-
         {{ 'whatsappur_message' if use_dirty_build else 'whatsapper_message' }}
       source_text: "{{ trigger.event.data.body | default('') | trim }}"
@@ -44,6 +51,7 @@ automation:
       source_chat_id: "{{ trigger.event.data.chat_id | default('') | trim }}"
       source_message_id: "{{ trigger.event.data.message_id | default('') | trim }}"
       source_alpha_char_count: "{{ source_text | regex_replace('[^A-Za-zÀ-ÖØ-öø-ÿ]', '') | length }}"
+      translation_success: false
     trigger:
       - platform: event
         event_type: whatsapper_message
@@ -54,13 +62,36 @@ automation:
         value_template: >-
           {{
             trigger.event.event_type == selected_event_type
-            and source_chat_name == 'Home Assistant'
+            and source_chat_name == cfg_chat_name
             and source_chat_id != ''
             and source_message_id != ''
             and source_text != ''
             and not (source_text is match('^(🇵🇹|🇳🇱|🌐)'))
           }}
     action:
+      # Fast visual feedback first: add busy reaction quickly.
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ use_dirty_build | bool }}"
+            sequence:
+              - action: notify.whatsappur
+                data:
+                  target:
+                    - "{{ source_chat_id }}"
+                  message: "{{ cfg_reaction_busy }}"
+                  data:
+                    reply_to_message_id: "{{ source_message_id }}"
+        default:
+          - action: notify.whatsapper
+            data:
+              target:
+                - "{{ source_chat_id }}"
+              message: "{{ cfg_reaction_busy }}"
+              data:
+                reply_to_message_id: "{{ source_message_id }}"
+
+      # Slow part starts here (language detection + translation calls).
       - action: rest_command.whatsapper_google_translate
         continue_on_error: true
         data:
@@ -71,11 +102,6 @@ automation:
 
       - variables:
           detect_source_status: "{{ detect_source_response.status | default(0) | int(0) }}"
-
-      - condition: template
-        value_template: "{{ detect_source_status == 200 }}"
-
-      - variables:
           source_lang: >-
             {% set payload = detect_source_response.content | default([]) %}
             {% set lang = '' %}
@@ -105,89 +131,159 @@ automation:
             {% endif %}
             {{ conf }}
           expected_target_lang: >-
-            {{ 'pt' if source_lang == 'nl' else 'nl' if source_lang == 'pt' else '' }}
+            {{ cfg_lang_pt if source_lang == cfg_lang_nl else cfg_lang_nl if source_lang == cfg_lang_pt else '' }}
           translated_flag: >-
-            {{ '🇵🇹' if source_lang == 'nl' else '🇳🇱' if source_lang == 'pt' else '🌐' }}
-
-      - condition: template
-        value_template: >-
-          {{
-            expected_target_lang != ''
-            and (source_conf | float(0) >= 0.85 or source_alpha_char_count | int(0) >= 5)
-          }}
-
-      - action: rest_command.whatsapper_google_translate
-        continue_on_error: true
-        data:
-          text: "{{ source_text }}"
-          sl: "{{ source_lang }}"
-          tl: "{{ expected_target_lang }}"
-        response_variable: translate_response
-
-      - variables:
-          translate_status: "{{ translate_response.status | default(0) | int(0) }}"
-          translated_text: >-
-            {% if translate_response.status | default(0) | int(0) == 200 %}
-              {{
-                (
-                  translate_response.content[0]
-                  | default([])
-                  | map(attribute=0)
-                  | join('')
-                ) | trim
-              }}
-            {% else %}
-              {{ '' }}
-            {% endif %}
-
-      - condition: template
-        value_template: "{{ translate_status == 200 and translated_text != '' and translated_text | lower != source_text | lower }}"
-
-      - action: rest_command.whatsapper_google_translate
-        continue_on_error: true
-        data:
-          text: "{{ translated_text }}"
-          sl: auto
-          tl: en
-        response_variable: detect_translated_response
-
-      - variables:
-          detect_translated_status: "{{ detect_translated_response.status | default(0) | int(0) }}"
-          translated_lang: >-
-            {% set payload = detect_translated_response.content | default([]) %}
-            {% set lang = '' %}
-            {% if payload is sequence and (payload | count) > 2 and payload[2] is string %}
-              {% set lang = payload[2] | lower %}
-            {% elif payload is sequence
-                and (payload | count) > 8
-                and payload[8] is sequence
-                and (payload[8] | count) > 0
-                and payload[8][0] is sequence
-                and (payload[8][0] | count) > 0 %}
-              {% set lang = payload[8][0][0] | lower %}
-            {% endif %}
-            {{ lang | trim }}
-
-      - condition: template
-        value_template: "{{ detect_translated_status == 200 and translated_lang == expected_target_lang }}"
+            {{ '🇵🇹' if expected_target_lang == cfg_lang_pt else '🇳🇱' if expected_target_lang == cfg_lang_nl else '🌐' }}
+          source_gate_ok: >-
+            {{
+              detect_source_status == 200
+              and expected_target_lang != ''
+              and (
+                source_conf | float(0) >= (cfg_confidence_threshold | float(0.85))
+                or source_alpha_char_count | int(0) >= 5
+              )
+            }}
 
       - choose:
           - conditions:
               - condition: template
-                value_template: "{{ use_dirty_build | bool }}"
+                value_template: "{{ source_gate_ok }}"
             sequence:
-              - action: notify.whatsappur
+              - action: rest_command.whatsapper_google_translate
+                continue_on_error: true
+                data:
+                  text: "{{ source_text }}"
+                  sl: "{{ source_lang }}"
+                  tl: "{{ expected_target_lang }}"
+                response_variable: translate_response
+
+              - variables:
+                  translate_status: "{{ translate_response.status | default(0) | int(0) }}"
+                  translated_text: >-
+                    {% if translate_response.status | default(0) | int(0) == 200 %}
+                      {{
+                        (
+                          translate_response.content[0]
+                          | default([])
+                          | map(attribute=0)
+                          | join('')
+                        ) | trim
+                      }}
+                    {% else %}
+                      {{ '' }}
+                    {% endif %}
+                  translate_gate_ok: >-
+                    {{
+                      translate_status == 200
+                      and translated_text != ''
+                      and translated_text | lower != source_text | lower
+                    }}
+
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ translate_gate_ok }}"
+                    sequence:
+                      - action: rest_command.whatsapper_google_translate
+                        continue_on_error: true
+                        data:
+                          text: "{{ translated_text }}"
+                          sl: auto
+                          tl: en
+                        response_variable: detect_translated_response
+
+                      - variables:
+                          detect_translated_status: "{{ detect_translated_response.status | default(0) | int(0) }}"
+                          translated_lang: >-
+                            {% set payload = detect_translated_response.content | default([]) %}
+                            {% set lang = '' %}
+                            {% if payload is sequence and (payload | count) > 2 and payload[2] is string %}
+                              {% set lang = payload[2] | lower %}
+                            {% elif payload is sequence
+                                and (payload | count) > 8
+                                and payload[8] is sequence
+                                and (payload[8] | count) > 0
+                                and payload[8][0] is sequence
+                                and (payload[8][0] | count) > 0 %}
+                              {% set lang = payload[8][0][0] | lower %}
+                            {% endif %}
+                            {{ lang | trim }}
+                          target_gate_ok: >-
+                            {{
+                              detect_translated_status == 200
+                              and translated_lang == expected_target_lang
+                            }}
+
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ target_gate_ok }}"
+                            sequence:
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ use_dirty_build | bool }}"
+                                    sequence:
+                                      - action: notify.whatsappur
+                                        data:
+                                          target:
+                                            - "{{ source_chat_id }}"
+                                          message: "{{ translated_flag }} {{ translated_text }}"
+                                default:
+                                  - action: notify.whatsapper
+                                    data:
+                                      target:
+                                        - "{{ source_chat_id }}"
+                                      message: "{{ translated_flag }} {{ translated_text }}"
+                              - variables:
+                                  translation_success: true
+
+      # Last action always updates reaction state:
+      # success -> toggle off busy reaction by sending same emoji again
+      # fail    -> set ❌ reaction (replaces/removes busy fish reaction)
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ translation_success | bool }}"
+            sequence:
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ use_dirty_build | bool }}"
+                    sequence:
+                      - action: notify.whatsappur
+                        data:
+                          target:
+                            - "{{ source_chat_id }}"
+                          message: "{{ cfg_reaction_busy }}"
+                          data:
+                            reply_to_message_id: "{{ source_message_id }}"
+                default:
+                  - action: notify.whatsapper
+                    data:
+                      target:
+                        - "{{ source_chat_id }}"
+                      message: "{{ cfg_reaction_busy }}"
+                      data:
+                        reply_to_message_id: "{{ source_message_id }}"
+        default:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ use_dirty_build | bool }}"
+                sequence:
+                  - action: notify.whatsappur
+                    data:
+                      target:
+                        - "{{ source_chat_id }}"
+                      message: "{{ cfg_reaction_fail }}"
+                      data:
+                        reply_to_message_id: "{{ source_message_id }}"
+            default:
+              - action: notify.whatsapper
                 data:
                   target:
                     - "{{ source_chat_id }}"
-                  message: "{{ translated_flag }} {{ translated_text }}"
+                  message: "{{ cfg_reaction_fail }}"
                   data:
                     reply_to_message_id: "{{ source_message_id }}"
-        default:
-          - action: notify.whatsapper
-            data:
-              target:
-                - "{{ source_chat_id }}"
-              message: "{{ translated_flag }} {{ translated_text }}"
-              data:
-                reply_to_message_id: "{{ source_message_id }}"

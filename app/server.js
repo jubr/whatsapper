@@ -94,6 +94,18 @@ const wsStats = {
 };
 
 const wsClients = new Map();
+const reactionToggleState = new Map();
+const REACTION_TOGGLE_LIMIT = 2000;
+
+const setReactionToggle = (messageId, reaction) => {
+  if (!reactionToggleState.has(messageId) && reactionToggleState.size >= REACTION_TOGGLE_LIMIT) {
+    const firstKey = reactionToggleState.keys().next().value;
+    if (firstKey) {
+      reactionToggleState.delete(firstKey);
+    }
+  }
+  reactionToggleState.set(messageId, reaction);
+};
 
 const getPayloadSize = (payload) => {
   if (typeof payload === "string") {
@@ -443,6 +455,11 @@ const handleWsRpcRequest = async (rpcPayload) => {
     case "react_message": {
       const messageId = typeof params.messageId === "string" ? params.messageId.trim() : "";
       const reaction = typeof params.reaction === "string" ? params.reaction.trim() : "";
+      const toggle =
+        params.toggle === true ||
+        params.toggle === "true" ||
+        params.toggle === 1 ||
+        params.toggle === "1";
       if (!messageId) {
         throw new Error("Missing params.messageId for react_message");
       }
@@ -463,10 +480,23 @@ const handleWsRpcRequest = async (rpcPayload) => {
       if (typeof targetMessage.react !== "function") {
         throw new Error("Target message does not support react()");
       }
-      await targetMessage.react(reaction);
+      const previousReaction = reactionToggleState.get(messageId);
+      const shouldToggleOff = toggle && previousReaction === reaction;
+      const reactionToApply = shouldToggleOff ? "" : reaction;
+      await targetMessage.react(reactionToApply);
+      if (toggle) {
+        if (shouldToggleOff) {
+          reactionToggleState.delete(messageId);
+        } else {
+          setReactionToggle(messageId, reaction);
+        }
+      }
       return {
         messageId,
         reaction,
+        appliedReaction: reactionToApply || null,
+        toggled: toggle,
+        removed: shouldToggleOff,
         reacted: true,
       };
     }
