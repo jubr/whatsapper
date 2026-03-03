@@ -79,17 +79,19 @@ automation:
                 data:
                   target:
                     - "{{ source_chat_id }}"
-                  message: "{{ cfg_reaction_busy }}"
+                  message: ""
                   data:
                     reply_to_message_id: "{{ source_message_id }}"
+                    reaction_add: "{{ cfg_reaction_busy }}"
         default:
           - action: notify.whatsapper
             data:
               target:
                 - "{{ source_chat_id }}"
-              message: "{{ cfg_reaction_busy }}"
+              message: ""
               data:
                 reply_to_message_id: "{{ source_message_id }}"
+                reaction_add: "{{ cfg_reaction_busy }}"
 
       # Slow part starts here (language detection + translation calls).
       - action: rest_command.whatsapper_google_translate
@@ -255,18 +257,20 @@ automation:
                         data:
                           target:
                             - "{{ source_chat_id }}"
-                          message: "{{ cfg_reaction_busy }}"
+                          message: ""
                           data:
                             reply_to_message_id: "{{ source_message_id }}"
+                            reaction_add: "{{ cfg_reaction_busy }}"
                             reaction_toggle: true
                 default:
                   - action: notify.whatsapper
                     data:
                       target:
                         - "{{ source_chat_id }}"
-                      message: "{{ cfg_reaction_busy }}"
+                      message: ""
                       data:
                         reply_to_message_id: "{{ source_message_id }}"
+                        reaction_add: "{{ cfg_reaction_busy }}"
                         reaction_toggle: true
         default:
           - choose:
@@ -278,14 +282,16 @@ automation:
                     data:
                       target:
                         - "{{ source_chat_id }}"
-                      message: "{{ cfg_reaction_fail }}"
+                      message: ""
                       data:
                         reply_to_message_id: "{{ source_message_id }}"
+                        reaction_add: "{{ cfg_reaction_fail }}"
             default:
               - action: notify.whatsapper
                 data:
                   target:
                     - "{{ source_chat_id }}"
-                  message: "{{ cfg_reaction_fail }}"
+                  message: ""
                   data:
                     reply_to_message_id: "{{ source_message_id }}"
+                    reaction_add: "{{ cfg_reaction_fail }}"

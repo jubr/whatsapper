@@ -35,6 +35,7 @@ ATTR_IMAGE_TYPE = "image_type"
 ATTR_IMAGE_NAME = "image_name"
 ATTR_REPLY_TO_MESSAGE_ID = "reply_to_message_id"
 ATTR_REACTION_TOGGLE = "reaction_toggle"
+ATTR_REACTION_ADD = "reaction_add"
 DEFAULT_WS_PATH = "/api/v1/events/ws"
 
 
@@ -243,20 +244,31 @@ class WhatsapperNotificationService(BaseNotificationService):
             data = kwargs.get(ATTR_DATA)
             reply_to_message_id = None
             reaction_toggle = False
+            reaction_add = None
             if isinstance(data, dict):
                 reply_candidate = data.get(ATTR_REPLY_TO_MESSAGE_ID)
                 if isinstance(reply_candidate, str) and reply_candidate.strip():
                     reply_to_message_id = reply_candidate.strip()
                 reaction_toggle = self._to_bool(data.get(ATTR_REACTION_TOGGLE), False)
+                explicit_reaction = data.get(ATTR_REACTION_ADD)
+                if explicit_reaction is not None:
+                    reaction_add = self._extract_reaction_candidate(str(explicit_reaction))
+                    if reaction_add is None:
+                        _LOGGER.warning(
+                            "Ignoring invalid data.%s value for reaction: %s",
+                            ATTR_REACTION_ADD,
+                            explicit_reaction,
+                        )
 
             title = kwargs.get(ATTR_TITLE)
             raw_message = "" if message is None else str(message)
             msg = f"{title}\n\n{raw_message}" if title else raw_message
             msg = msg.replace("\\n", "\n")
 
-            reaction_candidate = self._extract_reaction_candidate(msg)
+            reaction_candidate = reaction_add or self._extract_reaction_candidate(msg)
             # Special behavior:
-            # If payload is a single emoji-like reaction and includes reply_to_message_id,
+            # If explicit data.reaction_add is provided, or payload is a single
+            # emoji-like reaction, and includes reply_to_message_id,
             # perform a reaction call instead of sending a text message.
             # Toggle behavior is opt-in via data.reaction_toggle.
             if reply_to_message_id and reaction_candidate:
