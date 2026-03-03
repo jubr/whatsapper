@@ -18,7 +18,8 @@ notify:
         If `message` is a single emoji-like value and `reply_to_message_id` is
         provided, the integration sends a WhatsApp reaction (`msg.react(...)`)
         on that target message instead of sending a new text message.
-        Reaction behavior is toggle-based for repeated emoji reactions on the
-        same target message.
+        Set `reaction_toggle: true` to toggle the same reaction off/on when
+        repeated on the same target message.
       example:
         reply_to_message_id: "true_12345@c.us_ABCDEF"
+        reaction_toggle: true

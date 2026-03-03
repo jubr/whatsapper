@@ -258,6 +258,7 @@ automation:
                           message: "{{ cfg_reaction_busy }}"
                           data:
                             reply_to_message_id: "{{ source_message_id }}"
+                            reaction_toggle: true
                 default:
                   - action: notify.whatsapper
                     data:
@@ -266,6 +267,7 @@ automation:
                       message: "{{ cfg_reaction_busy }}"
                       data:
                         reply_to_message_id: "{{ source_message_id }}"
+                        reaction_toggle: true
         default:
           - choose:
               - conditions:

@@ -34,6 +34,7 @@ ATTR_IMAGE = "image"
 ATTR_IMAGE_TYPE = "image_type"
 ATTR_IMAGE_NAME = "image_name"
 ATTR_REPLY_TO_MESSAGE_ID = "reply_to_message_id"
+ATTR_REACTION_TOGGLE = "reaction_toggle"
 DEFAULT_WS_PATH = "/api/v1/events/ws"
 
 
@@ -77,6 +78,20 @@ class WhatsapperNotificationService(BaseNotificationService):
     @staticmethod
     def _is_chat_id(value: str | None) -> bool:
         return isinstance(value, str) and "@" in value
+
+    @staticmethod
+    def _to_bool(value: Any, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in ("1", "true", "yes", "on"):
+                return True
+            if normalized in ("0", "false", "no", "off", ""):
+                return False
+        return default
 
     @staticmethod
     def _extract_reaction_candidate(value: str | None) -> str | None:
@@ -227,10 +242,12 @@ class WhatsapperNotificationService(BaseNotificationService):
         try:
             data = kwargs.get(ATTR_DATA)
             reply_to_message_id = None
+            reaction_toggle = False
             if isinstance(data, dict):
                 reply_candidate = data.get(ATTR_REPLY_TO_MESSAGE_ID)
                 if isinstance(reply_candidate, str) and reply_candidate.strip():
                     reply_to_message_id = reply_candidate.strip()
+                reaction_toggle = self._to_bool(data.get(ATTR_REACTION_TOGGLE), False)
 
             title = kwargs.get(ATTR_TITLE)
             raw_message = "" if message is None else str(message)
@@ -240,14 +257,15 @@ class WhatsapperNotificationService(BaseNotificationService):
             reaction_candidate = self._extract_reaction_candidate(msg)
             # Special behavior:
             # If payload is a single emoji-like reaction and includes reply_to_message_id,
-            # perform a reaction toggle instead of sending a text message.
+            # perform a reaction call instead of sending a text message.
+            # Toggle behavior is opt-in via data.reaction_toggle.
             if reply_to_message_id and reaction_candidate:
                 await self._ws_rpc_request(
                     "react_message",
                     {
                         "messageId": reply_to_message_id,
                         "reaction": reaction_candidate,
-                        "toggle": True,
+                        "toggle": reaction_toggle,
                     },
                 )
                 return
