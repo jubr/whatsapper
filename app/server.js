@@ -423,6 +423,11 @@ const handleWsRpcRequest = async (rpcPayload) => {
       if (!activeClient) {
         throw new Error("Client not initialized");
       }
+      logServer("info", "RPC send_message params", {
+        chatId: chatId || "-",
+        quotedMessageId: quotedMessageId || "-",
+        messageLength: message.length,
+      });
       const sendOptions = quotedMessageId ? { quotedMessageId } : undefined;
       const response = sendOptions
         ? await activeClient.sendMessage(chatId, message, sendOptions)
@@ -470,6 +475,11 @@ const handleWsRpcRequest = async (rpcPayload) => {
       if (!activeClient) {
         throw new Error("Client not initialized");
       }
+      logServer("info", "RPC react_message params", {
+        messageId: messageId || "-",
+        reaction,
+        toggle,
+      });
       if (typeof activeClient.getMessageById !== "function") {
         throw new Error("Client does not support getMessageById");
       }
@@ -491,6 +501,13 @@ const handleWsRpcRequest = async (rpcPayload) => {
           setReactionToggle(messageId, reaction);
         }
       }
+      logServer("info", "RPC react_message applied", {
+        messageId,
+        requestedReaction: reaction,
+        appliedReaction: reactionToApply || "(removed)",
+        toggled: toggle,
+        removed: shouldToggleOff,
+      });
       return {
         messageId,
         reaction,
@@ -780,11 +797,17 @@ fastify.after(() => {
           if (payload?.type === "rpc") {
             wsStats.rpcRequests += 1;
             const requestId = typeof payload.requestId === "string" ? payload.requestId : null;
+            const rpcParams =
+              payload.params && typeof payload.params === "object" ? payload.params : {};
             logServer("info", "RPC request", {
               channel: "events",
               clientId: client.id,
               action: payload.action || "unknown",
               requestId: requestId || "-",
+              paramKeys: Object.keys(rpcParams).join(",") || "-",
+              hasReplyTo:
+                typeof rpcParams.quotedMessageId === "string" ||
+                typeof rpcParams.messageId === "string",
             });
             try {
               const result = await handleWsRpcRequest(payload);

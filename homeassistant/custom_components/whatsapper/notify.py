@@ -36,6 +36,7 @@ ATTR_IMAGE_NAME = "image_name"
 ATTR_REPLY_TO_MESSAGE_ID = "reply_to_message_id"
 ATTR_REACTION_TOGGLE = "reaction_toggle"
 ATTR_REACTION_ADD = "reaction_add"
+ATTR_REACTION = "reaction"
 DEFAULT_WS_PATH = "/api/v1/events/ws"
 
 
@@ -251,6 +252,8 @@ class WhatsapperNotificationService(BaseNotificationService):
                     reply_to_message_id = reply_candidate.strip()
                 reaction_toggle = self._to_bool(data.get(ATTR_REACTION_TOGGLE), False)
                 explicit_reaction = data.get(ATTR_REACTION_ADD)
+                if explicit_reaction is None:
+                    explicit_reaction = data.get(ATTR_REACTION)
                 if explicit_reaction is not None:
                     reaction_add = self._extract_reaction_candidate(str(explicit_reaction))
                     if reaction_add is None:
@@ -260,18 +263,52 @@ class WhatsapperNotificationService(BaseNotificationService):
                             explicit_reaction,
                         )
 
+            if not reply_to_message_id:
+                top_level_reply = kwargs.get(ATTR_REPLY_TO_MESSAGE_ID)
+                if isinstance(top_level_reply, str) and top_level_reply.strip():
+                    reply_to_message_id = top_level_reply.strip()
+
+            if reaction_add is None:
+                top_level_reaction = kwargs.get(ATTR_REACTION_ADD)
+                if top_level_reaction is None:
+                    top_level_reaction = kwargs.get(ATTR_REACTION)
+                if top_level_reaction is not None:
+                    reaction_add = self._extract_reaction_candidate(str(top_level_reaction))
+                    if reaction_add is None:
+                        _LOGGER.warning(
+                            "Ignoring invalid top-level reaction override value: %s",
+                            top_level_reaction,
+                        )
+
+            if not reaction_toggle:
+                reaction_toggle = self._to_bool(kwargs.get(ATTR_REACTION_TOGGLE), False)
+
             title = kwargs.get(ATTR_TITLE)
             raw_message = "" if message is None else str(message)
             msg = f"{title}\n\n{raw_message}" if title else raw_message
             msg = msg.replace("\\n", "\n")
 
             reaction_candidate = reaction_add or self._extract_reaction_candidate(msg)
+            _LOGGER.info(
+                "Notify payload parsed | has_data=%s reply_to=%s reaction_add=%s message_trim_len=%d toggle=%s",
+                isinstance(data, dict),
+                bool(reply_to_message_id),
+                reaction_candidate,
+                len(msg.strip()),
+                reaction_toggle,
+            )
             # Special behavior:
             # If explicit data.reaction_add is provided, or payload is a single
             # emoji-like reaction, and includes reply_to_message_id,
             # perform a reaction call instead of sending a text message.
             # Toggle behavior is opt-in via data.reaction_toggle.
             if reply_to_message_id and reaction_candidate:
+                _LOGGER.info(
+                    "Notify route: react_message | message_id=%s reaction=%s toggle=%s",
+                    reply_to_message_id,
+                    reaction_candidate,
+                    reaction_toggle,
+                )
                 await self._ws_rpc_request(
                     "react_message",
                     {
@@ -302,6 +339,7 @@ class WhatsapperNotificationService(BaseNotificationService):
                 return
 
             if data and all(attr in data for attr in [ATTR_IMAGE, ATTR_IMAGE_TYPE, ATTR_IMAGE_NAME]):
+                _LOGGER.info("Notify route: send_media | chat_id=%s", chat_id)
                 await self._ws_rpc_request(
                     "send_media",
                     {
@@ -313,6 +351,12 @@ class WhatsapperNotificationService(BaseNotificationService):
                 )
                 return
 
+            _LOGGER.info(
+                "Notify route: send_message | chat_id=%s quoted=%s message_len=%d",
+                chat_id,
+                bool(reply_to_message_id),
+                len(msg),
+            )
             await self._ws_rpc_request(
                 "send_message",
                 {
