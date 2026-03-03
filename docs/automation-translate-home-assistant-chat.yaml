@@ -7,10 +7,10 @@
 #
 # Logic:
 # - Detect source language + confidence.
-# - If src == nl: translate to pt, prefix 🇵🇹.
+# - If src == nl or en: translate to pt, prefix 🇵🇹.
 # - If src == pt: translate to nl, prefix 🇳🇱.
 # - Else skip.
-# - Gate: src in {nl, pt} and (conf >= 0.85 or alpha chars >= 5)
+# - Gate: src in {en, nl, pt} and (conf >= 0.5 or alpha chars >= 5)
 #   and translated output re-detects as expected target lang.
 # - On client/API errors, skip quietly (continue_on_error + status checks).
 #
@@ -38,14 +38,26 @@ automation:
     variables:
       # Configurable variables
       use_dirty_build: true
+      cfg_lang_en: "en"
       cfg_lang_nl: "nl"
       cfg_lang_pt: "pt"
       cfg_chat_name: "Home Assistant"
       cfg_reaction_busy: "🐟"
       cfg_reaction_fail: "❓"
-      cfg_reaction_lang_nl: "🇳🇱"
-      cfg_reaction_lang_pt: "🇵🇹"
-      cfg_confidence_threshold: 0.85
+      cfg_lang_to_flag:
+        en: "🇬🇧"
+        nl: "🇳🇱"
+        pt: "🇵🇹"
+        de: "🇩🇪"
+        fr: "🇫🇷"
+        es: "🇪🇸"
+        it: "🇮🇹"
+        tr: "🇹🇷"
+        pl: "🇵🇱"
+        ro: "🇷🇴"
+        sv: "🇸🇪"
+        no: "🇳🇴"
+      cfg_confidence_threshold: 0.5
       selected_event_type: >-
         {{ 'whatsappur_message' if use_dirty_build else 'whatsapper_message' }}
       source_text: "{{ trigger.event.data.body | default('') | trim }}"
@@ -129,6 +141,9 @@ automation:
                       {% set lang = payload[8][0][0] | lower %}
                     {% endif %}
                     {{ lang | trim }}
+                  source_lang_base: >-
+                    {% set normalized = (source_lang | default('') | lower | replace('_', '-')) %}
+                    {{ normalized.split('-')[0] if normalized else '' }}
                   source_conf: >-
                     {% set payload = (detect_source_response | default({})).content | default([]) %}
                     {% set conf = 0 %}
@@ -144,22 +159,23 @@ automation:
                     {% endif %}
                     {{ conf }}
                   expected_target_lang: >-
-                    {{ cfg_lang_pt if source_lang == cfg_lang_nl else cfg_lang_nl if source_lang == cfg_lang_pt else '' }}
+                    {{
+                      cfg_lang_pt if source_lang_base in [cfg_lang_nl, cfg_lang_en] else
+                      cfg_lang_nl if source_lang_base == cfg_lang_pt else
+                      ''
+                    }}
                   translated_flag: >-
                     {{ '🇵🇹' if expected_target_lang == cfg_lang_pt else '🇳🇱' if expected_target_lang == cfg_lang_nl else '🌐' }}
-                  detected_source_lang: "{{ source_lang }}"
+                  detected_source_lang: "{{ source_lang_base }}"
                   source_lang_reaction: >-
-                    {{
-                      cfg_reaction_lang_nl if source_lang == cfg_lang_nl else
-                      cfg_reaction_lang_pt if source_lang == cfg_lang_pt else
-                      cfg_reaction_fail
-                    }}
+                    {{ cfg_lang_to_flag.get(source_lang_base, cfg_reaction_fail) }}
                   source_gate_ok: >-
                     {{
                       detect_source_status == 200
+                      and source_lang_base in [cfg_lang_en, cfg_lang_nl, cfg_lang_pt]
                       and expected_target_lang != ''
                       and (
-                        source_conf | float(0) >= (cfg_confidence_threshold | float(0.85))
+                        source_conf | float(0) >= (cfg_confidence_threshold | float(0.5))
                         or source_alpha_char_count | int(0) >= 5
                       )
                     }}
