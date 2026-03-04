@@ -1,6 +1,7 @@
 "use strict";
 
 const { randomUUID } = require("crypto");
+const fs = require("fs");
 const path = require("path");
 const QRCode = require("qrcode");
 const {
@@ -65,6 +66,32 @@ const supportedWsEvents = new Set(WS_SUPPORTED_EVENTS);
 const isSocketOpen = (socket) => socket.readyState === socket.constructor.OPEN;
 const runtimeIdentity = getRuntimeIdentity();
 const APP_VERSION = process.env.APP_BUILD_VERSION || require("../package.json").version || "unknown";
+const resolveIntegrationVersion = () => {
+  const manifestCandidates = [
+    path.resolve(__dirname, "..", "homeassistant", "custom_components", "whatsapper", "manifest.json"),
+    "/homeassistant/custom_components/whatsappur/manifest.json",
+    "/homeassistant/custom_components/whatsapper/manifest.json",
+  ];
+
+  for (const manifestPath of manifestCandidates) {
+    try {
+      if (!fs.existsSync(manifestPath)) {
+        continue;
+      }
+      const raw = fs.readFileSync(manifestPath, "utf8");
+      const parsed = JSON.parse(raw);
+      const version = typeof parsed?.version === "string" ? parsed.version.trim() : "";
+      if (version) {
+        return version;
+      }
+    } catch (_) {
+      // ignore invalid/unreadable manifest and continue with fallback paths
+    }
+  }
+
+  return "unknown";
+};
+const INTEGRATION_VERSION = String(process.env.HA_INTEGRATION_VERSION || "").trim() || resolveIntegrationVersion();
 const toTitleCaseName = (name) =>
   typeof name === "string" && name.length > 0 ? `${name[0].toUpperCase()}${name.slice(1)}` : "Whatsapper";
 const getUiVersions = () => ({
@@ -75,6 +102,7 @@ const getUiVersions = () => ({
   devBuild: runtimeIdentity.devBuild ?? runtimeIdentity.dirtyBuild,
   whatsappWebJsVersion: getRuntimeState().installedVersion || "unknown",
   appVersion: APP_VERSION,
+  integrationVersion: INTEGRATION_VERSION,
 });
 
 const wsStats = {
