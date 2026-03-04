@@ -66,44 +66,57 @@ const supportedWsEvents = new Set(WS_SUPPORTED_EVENTS);
 const isSocketOpen = (socket) => socket.readyState === socket.constructor.OPEN;
 const runtimeIdentity = getRuntimeIdentity();
 const APP_VERSION = process.env.APP_BUILD_VERSION || require("../package.json").version || "unknown";
-const resolveIntegrationVersion = () => {
-  const manifestCandidates = [
-    path.resolve(__dirname, "..", "homeassistant", "custom_components", "whatsapper", "manifest.json"),
-    "/homeassistant/custom_components/whatsappur/manifest.json",
-    "/homeassistant/custom_components/whatsapper/manifest.json",
+const INTEGRATION_VERSION_REGEX = /INTEGRATION_RUNTIME_VERSION\s*=\s*["']([^"']+)["']/;
+const resolveIntegrationVersionFromRuntimePython = () => {
+  const runtimeName = String(runtimeIdentity.appName || "").trim().toLowerCase();
+  const initPyCandidates = [
+    `/homeassistant/custom_components/${runtimeName}/__init__.py`,
+    "/homeassistant/custom_components/whatsappur/__init__.py",
+    "/homeassistant/custom_components/whatsapper/__init__.py",
   ];
 
-  for (const manifestPath of manifestCandidates) {
+  for (const initPyPath of initPyCandidates) {
     try {
-      if (!fs.existsSync(manifestPath)) {
+      if (!fs.existsSync(initPyPath)) {
         continue;
       }
-      const raw = fs.readFileSync(manifestPath, "utf8");
-      const parsed = JSON.parse(raw);
-      const version = typeof parsed?.version === "string" ? parsed.version.trim() : "";
+      const raw = fs.readFileSync(initPyPath, "utf8");
+      const match = INTEGRATION_VERSION_REGEX.exec(raw);
+      const version = match && typeof match[1] === "string" ? match[1].trim() : "";
       if (version) {
         return version;
       }
     } catch (_) {
-      // ignore invalid/unreadable manifest and continue with fallback paths
+      // ignore invalid/unreadable runtime integration file and continue
     }
   }
 
   return "unknown";
 };
-const INTEGRATION_VERSION = String(process.env.HA_INTEGRATION_VERSION || "").trim() || resolveIntegrationVersion();
+const isVersionMismatch = (addonVersion, integrationVersion) => {
+  const addon = typeof addonVersion === "string" ? addonVersion.trim() : "";
+  const integration = typeof integrationVersion === "string" ? integrationVersion.trim() : "";
+  if (!addon || !integration || addon === "unknown" || integration === "unknown") {
+    return false;
+  }
+  return addon !== integration;
+};
 const toTitleCaseName = (name) =>
   typeof name === "string" && name.length > 0 ? `${name[0].toUpperCase()}${name.slice(1)}` : "Whatsapper";
-const getUiVersions = () => ({
-  appName: runtimeIdentity.appName,
-  appTitle: toTitleCaseName(runtimeIdentity.appName),
-  appPort: runtimeIdentity.appPort,
-  dirtyBuild: runtimeIdentity.dirtyBuild,
-  devBuild: runtimeIdentity.devBuild ?? runtimeIdentity.dirtyBuild,
-  whatsappWebJsVersion: getRuntimeState().installedVersion || "unknown",
-  appVersion: APP_VERSION,
-  integrationVersion: INTEGRATION_VERSION,
-});
+const getUiVersions = () => {
+  const integrationVersion = resolveIntegrationVersionFromRuntimePython();
+  return {
+    appName: runtimeIdentity.appName,
+    appTitle: toTitleCaseName(runtimeIdentity.appName),
+    appPort: runtimeIdentity.appPort,
+    dirtyBuild: runtimeIdentity.dirtyBuild,
+    devBuild: runtimeIdentity.devBuild ?? runtimeIdentity.dirtyBuild,
+    whatsappWebJsVersion: getRuntimeState().installedVersion || "unknown",
+    appVersion: APP_VERSION,
+    integrationVersion,
+    integrationVersionMismatch: isVersionMismatch(APP_VERSION, integrationVersion),
+  };
+};
 
 const wsStats = {
   startedAt: new Date().toISOString(),

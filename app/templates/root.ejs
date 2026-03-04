@@ -328,7 +328,7 @@
       subtitle: "Home Assistant custom component",
       route: null,
       meta: integrationVersion || "unknown",
-      attention: false,
+      attention: Boolean(integrationVersionMismatch),
     },
     {
       icon: "📦",
@@ -401,7 +401,10 @@
             <div class="chat-preview"><%= item.subtitle %></div>
           </div>
           <div class="chat-meta">
-            <div class="chat-time"><%= item.meta %></div>
+            <div class="chat-time <%= item.attention ? "attention" : "" %>"><%= item.meta %></div>
+            <% if (item.attention) { %>
+              <span class="unread-badge">1</span>
+            <% } %>
             <% if (item.pinned) { %>
               <span class="pin">📌</span>
             <% } %>

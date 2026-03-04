@@ -22,6 +22,9 @@ from .auto_host_port import async_detect_host_port
 _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "whatsapper"
+# Co-defined runtime version marker for executable integration code.
+# Keep this in sync with manifest.json version.
+INTEGRATION_RUNTIME_VERSION = "2026.2.28"
 CONF_HOST_PORT = "host_port"
 CONF_WS_PATH = "ws_path"
 DEFAULT_WS_PATH = "/api/v1/events/ws"
@@ -144,6 +147,9 @@ async def _fetch_addon_version(hass: HomeAssistant, host_port: str) -> str | Non
 
 
 async def _get_integration_version(hass: HomeAssistant) -> str | None:
+    if isinstance(INTEGRATION_RUNTIME_VERSION, str) and INTEGRATION_RUNTIME_VERSION.strip():
+        return INTEGRATION_RUNTIME_VERSION.strip()
+
     try:
         integration = await async_get_integration(hass, DOMAIN)
     except Exception:  # pylint: disable=broad-except
