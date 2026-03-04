@@ -325,14 +325,16 @@
     {
       icon: "📦",
       title: `${titleText} integration version`,
-      subtitle: "Home Assistant custom component",
+      subtitle: integrationVersionMismatch
+        ? "Restart Home Assistant core to update..."
+        : "Home Assistant custom component",
       route: null,
       meta: integrationVersion || "unknown",
       attention: Boolean(integrationVersionMismatch),
     },
     {
       icon: "📦",
-      title: `${titleText} version`,
+      title: "Whatsapper app version",
       subtitle: devBuild ? "Dev build" : "Release build",
       route: null,
       meta: appVersion || "unknown",
