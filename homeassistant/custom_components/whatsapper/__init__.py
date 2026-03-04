@@ -420,6 +420,31 @@ async def _listen_for_messages(
                         _LOGGER.debug("Ignoring malformed websocket message: %s", ws_message.data)
                         continue
 
+                    payload_type = payload.get("type")
+                    if payload_type == "integration_version_request":
+                        integration_version = await _get_integration_version(hass)
+                        if not integration_version:
+                            integration_version = INTEGRATION_RUNTIME_VERSION
+                        try:
+                            await websocket.send_json(
+                                {
+                                    "type": "integration_version_response",
+                                    "timestamp": payload.get("timestamp"),
+                                    "data": {
+                                        "domain": DOMAIN,
+                                        "integrationVersion": integration_version,
+                                    },
+                                }
+                            )
+                            _LOGGER.debug(
+                                "Sent integration_version_response over websocket: domain=%s version=%s",
+                                DOMAIN,
+                                integration_version,
+                            )
+                        except Exception as err:  # pylint: disable=broad-except
+                            _LOGGER.warning("Failed to send integration version over websocket: %s", err)
+                        continue
+
                     if payload.get("type") == "connected":
                         connected_data = payload.get("data", {})
                         if connected_data.get("clientInitialized"):

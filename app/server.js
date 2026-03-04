@@ -1,7 +1,6 @@
 "use strict";
 
 const { randomUUID } = require("crypto");
-const fs = require("fs");
 const path = require("path");
 const QRCode = require("qrcode");
 const {
@@ -66,33 +65,9 @@ const supportedWsEvents = new Set(WS_SUPPORTED_EVENTS);
 const isSocketOpen = (socket) => socket.readyState === socket.constructor.OPEN;
 const runtimeIdentity = getRuntimeIdentity();
 const APP_VERSION = process.env.APP_BUILD_VERSION || require("../package.json").version || "unknown";
-const INTEGRATION_VERSION_REGEX = /INTEGRATION_RUNTIME_VERSION\s*=\s*["']([^"']+)["']/;
-const resolveIntegrationVersionFromRuntimePython = () => {
-  const runtimeName = String(runtimeIdentity.appName || "").trim().toLowerCase();
-  const initPyCandidates = [
-    `/homeassistant/custom_components/${runtimeName}/__init__.py`,
-    "/homeassistant/custom_components/whatsappur/__init__.py",
-    "/homeassistant/custom_components/whatsapper/__init__.py",
-  ];
-
-  for (const initPyPath of initPyCandidates) {
-    try {
-      if (!fs.existsSync(initPyPath)) {
-        continue;
-      }
-      const raw = fs.readFileSync(initPyPath, "utf8");
-      const match = INTEGRATION_VERSION_REGEX.exec(raw);
-      const version = match && typeof match[1] === "string" ? match[1].trim() : "";
-      if (version) {
-        return version;
-      }
-    } catch (_) {
-      // ignore invalid/unreadable runtime integration file and continue
-    }
-  }
-
-  return "unknown";
-};
+let integrationVersionFromWs = "unknown";
+let integrationVersionFromWsAt = null;
+let integrationVersionFromWsClientId = null;
 const isVersionMismatch = (addonVersion, integrationVersion) => {
   const addon = typeof addonVersion === "string" ? addonVersion.trim() : "";
   const integration = typeof integrationVersion === "string" ? integrationVersion.trim() : "";
@@ -104,7 +79,10 @@ const isVersionMismatch = (addonVersion, integrationVersion) => {
 const toTitleCaseName = (name) =>
   typeof name === "string" && name.length > 0 ? `${name[0].toUpperCase()}${name.slice(1)}` : "Whatsapper";
 const getUiVersions = () => {
-  const integrationVersion = resolveIntegrationVersionFromRuntimePython();
+  const integrationVersion =
+    typeof integrationVersionFromWs === "string" && integrationVersionFromWs.trim()
+      ? integrationVersionFromWs.trim()
+      : "unknown";
   return {
     appName: runtimeIdentity.appName,
     appTitle: toTitleCaseName(runtimeIdentity.appName),
@@ -115,6 +93,8 @@ const getUiVersions = () => {
     appVersion: APP_VERSION,
     integrationVersion,
     integrationVersionMismatch: isVersionMismatch(APP_VERSION, integrationVersion),
+    integrationVersionSource:
+      integrationVersionFromWsAt && integrationVersionFromWsClientId ? "events-ws" : "unknown",
   };
 };
 
@@ -146,6 +126,26 @@ const setReactionToggle = (messageId, reaction) => {
     }
   }
   reactionToggleState.set(messageId, reaction);
+};
+
+const updateIntegrationVersionFromWs = (client, version, details = {}) => {
+  if (typeof version !== "string") {
+    return false;
+  }
+  const normalizedVersion = version.trim();
+  if (!normalizedVersion) {
+    return false;
+  }
+  integrationVersionFromWs = normalizedVersion;
+  integrationVersionFromWsAt = new Date().toISOString();
+  integrationVersionFromWsClientId = client?.id || null;
+  logServer("info", "Integration version updated via events ws", {
+    clientId: integrationVersionFromWsClientId || "-",
+    integrationVersion: normalizedVersion,
+    source: "events-ws",
+    ...details,
+  });
+  return true;
 };
 
 const getPayloadSize = (payload) => {
@@ -819,6 +819,14 @@ fastify.after(() => {
           currentQrConsoleStyle: getQrConsoleStyle(),
         },
       });
+      sendWsPayload(client, {
+        type: "integration_version_request",
+        timestamp: new Date().toISOString(),
+        data: {
+          requestedBy: "addon",
+          wanted: ["integrationVersion", "domain"],
+        },
+      });
 
       socket.on("message", async (rawBuffer) => {
         const rawText = rawBuffer.toString();
@@ -831,6 +839,16 @@ fastify.after(() => {
             sendWsPayload(client, {
               type: "pong",
               timestamp: new Date().toISOString(),
+            });
+            return;
+          }
+
+          if (payload?.type === "integration_version_response") {
+            const data = payload?.data && typeof payload.data === "object" ? payload.data : {};
+            const integrationVersion =
+              typeof data.integrationVersion === "string" ? data.integrationVersion : "";
+            updateIntegrationVersionFromWs(client, integrationVersion, {
+              domain: typeof data.domain === "string" ? data.domain : "-",
             });
             return;
           }
