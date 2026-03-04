@@ -188,17 +188,17 @@
   }
 
   .unread-badge {
-    min-width: 1.28rem;
-    height: 1.28rem;
+    width: 0.72rem;
+    height: 0.72rem;
     border-radius: 999px;
     background: var(--wa-unread);
-    color: #06261e;
+    color: transparent;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.74rem;
+    font-size: 0;
     font-weight: 700;
-    padding: 0 0.3rem;
+    padding: 0;
   }
 
   .pin {
@@ -331,6 +331,7 @@
       route: null,
       meta: integrationVersion || "unknown",
       attention: Boolean(integrationVersionMismatch),
+      dimmed: Boolean(integrationVersionMismatch),
     },
     {
       icon: "📦",
@@ -389,7 +390,7 @@
             <div class="chat-meta">
               <div class="chat-time <%= item.attention ? "attention" : "" %>"><%= item.meta %></div>
               <% if (item.attention) { %>
-                <span class="unread-badge">1</span>
+                <span class="unread-badge"></span>
               <% } %>
               <% if (item.pinned) { %>
                 <span class="pin">📌</span>
@@ -405,7 +406,7 @@
           <div class="chat-meta">
             <div class="chat-time <%= item.attention ? "attention" : "" %>"><%= item.meta %></div>
             <% if (item.attention) { %>
-              <span class="unread-badge">1</span>
+              <span class="unread-badge"></span>
             <% } %>
             <% if (item.pinned) { %>
               <span class="pin">📌</span>
