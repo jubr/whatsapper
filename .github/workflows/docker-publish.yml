@@ -85,6 +85,41 @@ jobs:
           echo "app_runtime_name=$APP_RUNTIME_NAME" >> "$GITHUB_OUTPUT"
           echo "app_runtime_port=$APP_RUNTIME_PORT" >> "$GITHUB_OUTPUT"
 
+      - name: Sync integration version before build
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import re
+
+          release_version = os.environ["RELEASE_VERSION"].strip()
+          if not release_version:
+              raise SystemExit("RELEASE_VERSION is empty")
+
+          manifest_path = pathlib.Path("homeassistant/custom_components/whatsapper/manifest.json")
+          init_py_path = pathlib.Path("homeassistant/custom_components/whatsapper/__init__.py")
+
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          manifest["version"] = release_version
+          manifest_path.write_text(json.dumps(manifest, indent=4) + "\n", encoding="utf-8")
+
+          init_py = init_py_path.read_text(encoding="utf-8")
+          init_py_updated, replacements = re.subn(
+              r'INTEGRATION_RUNTIME_VERSION\s*=\s*["\'][^"\']+["\']',
+              f'INTEGRATION_RUNTIME_VERSION = "{release_version}"',
+              init_py,
+              count=1,
+          )
+          if replacements != 1:
+              raise SystemExit("Could not update INTEGRATION_RUNTIME_VERSION in __init__.py")
+          init_py_path.write_text(init_py_updated, encoding="utf-8")
+
+          print(f"Synced integration version to {release_version}")
+          PY
+
       - name: Build and push image
         uses: docker/build-push-action@v5
         with:
