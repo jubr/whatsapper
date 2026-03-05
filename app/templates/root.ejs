@@ -131,6 +131,14 @@
     opacity: 0.78;
   }
 
+  .chat-row.soft-version-row {
+    opacity: 0.72;
+  }
+
+  .chat-row.soft-version-row .pin {
+    opacity: 0.78;
+  }
+
   .chat-row.inactive-row {
     opacity: 0.72;
   }
@@ -332,6 +340,8 @@
       meta: integrationVersion || "unknown",
       attention: Boolean(integrationVersionMismatch),
       dimmed: Boolean(integrationVersionMismatch),
+      pinned: !integrationVersionMismatch,
+      softPinned: true,
     },
     {
       icon: "📦",
@@ -379,7 +389,7 @@
 
   <ul class="chat-list">
     <% rows.forEach((item) => { %>
-      <li class="chat-row <%= item.pinned ? "version-row" : "" %> <%= item.dimmed ? "inactive-row" : "" %>">
+      <li class="chat-row <%= item.pinned ? "version-row" : "" %> <%= item.softPinned ? "soft-version-row" : "" %> <%= item.dimmed ? "inactive-row" : "" %>">
         <% if (item.route) { %>
           <a class="chat-link" data-app-route="<%= item.route %>" href="<%= item.route %>">
             <div class="chat-avatar"><%= item.icon %></div>
