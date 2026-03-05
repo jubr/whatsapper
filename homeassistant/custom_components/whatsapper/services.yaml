@@ -1,0 +1,28 @@
+notify:
+  name: "Whatsapper notify service"
+  description: "Send a notification using Whatsapper"
+  fields:
+    message:
+      name: Send message
+      description: The message to send
+      example: "Hello World"
+    target:
+      name: Chat target
+      description: "Optional chat_id (e.g. 12345@g.us) or chat/channel name to resolve."
+      example: "Family Group"
+    data:
+      name: Extra options
+      description: >
+        Optional dictionary for advanced send options. Set
+        `reply_to_message_id` to quote-reply to a specific WhatsApp message id.
+        Set `reaction_add` (for example `🙃`) with `reply_to_message_id` to send
+        an explicit message reaction.
+        If `message` is a single emoji-like value and `reply_to_message_id` is
+        provided, the integration sends a WhatsApp reaction (`msg.react(...)`)
+        on that target message instead of sending a new text message.
+        Set `reaction_toggle: true` to toggle the same reaction off/on when
+        repeated on the same target message.
+      example:
+        reply_to_message_id: "true_12345@c.us_ABCDEF"
+        reaction_add: "🙃"
+        reaction_toggle: true
