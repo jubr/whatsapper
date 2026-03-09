@@ -30,13 +30,45 @@ To send media, call with a `POST` via the `/command/media` api with this json sy
 
 ```shell
 npm i
-node server.js
+node app/server.js
 ```
 
 ## Run with docker compose
 
 `docker compose up`
 
+## Bundled Home Assistant integration
+
+This image now bundles `custom_components/whatsapper` from:
+
+- https://github.com/jubr/whatsapper-ha-integration
+
+On container startup, the integration is copied to:
+
+- `${HA_CUSTOM_COMPONENTS_PATH:-/ha-custom-components}/whatsapper`
+
+By default, `docker-compose.yaml` mounts a shared named volume (`ha-custom-components`) at `/ha-custom-components`.
+
+## Deploy Whatsapper + Home Assistant from the same compose stack
+
+Start both services with:
+
+```shell
+docker compose -f docker-compose.yaml -f docker-compose.homeassistant.yaml up -d
+```
+
+This overlay mounts the same `ha-custom-components` volume into Home Assistant at `/config/custom_components`, so HA can load the bundled `whatsapper` integration.
+If the integration is not shown on first boot, restart Home Assistant once after the `whatsapper` container is running.
+
+Then configure Home Assistant with the Docker service name as host:
+
+```yaml
+notify:
+  - platform: whatsapper
+    name: whatsapp
+    host_port: whatsapper:3000
+    chat_id: 123123123@g.us
+```
 
 ## Push on docker hub (for me to remember)
 
