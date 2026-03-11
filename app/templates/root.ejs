@@ -1,7 +1,475 @@
+<style>
+  :root {
+    color-scheme: dark;
+    --wa-bg: #0b141a;
+    --wa-shell: #111b21;
+    --wa-text: #e9edef;
+    --wa-muted: #8696a0;
+    --wa-separator: #202c33;
+    --wa-search: #202c33;
+    --wa-pill-border: #2a3942;
+    --wa-pill-text: #aebac1;
+    --wa-unread: #00a884;
+    --wa-avatar-green: rgba(31, 154, 100, 0.5);
+    --wa-avatar-green-2: rgba(56, 177, 119, 0.5);
+    --wa-tooltip-bg: rgba(15, 20, 23, 0.96);
+  }
 
-<h1>Whatsapper</h1>
+  body {
+    margin: 0;
+    background: var(--wa-bg);
+    color: var(--wa-text);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
 
-<ul>
-  <li><a href="/chats">Chats</a></li>
-  <li><a href="/qr">Qr</a></li>
-</ul>
+  .window {
+    width: min(100vw - 1.6rem, 33rem);
+    margin: 0.8rem auto;
+    border-radius: 0.35rem;
+    overflow: hidden;
+    border: 1px solid #1b252b;
+    background: var(--wa-shell);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.44);
+  }
+
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.05rem 1rem 0.55rem;
+  }
+
+  .top-bar h1 {
+    margin: 0;
+    font-size: 2rem;
+    line-height: 1;
+    letter-spacing: -0.015em;
+    font-weight: 700;
+  }
+
+  .top-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+  }
+
+  .icon-button {
+    border: 0;
+    background: transparent;
+    color: #d7dde0;
+    font-size: 1.38rem;
+    line-height: 1;
+    padding: 0.15rem 0.22rem;
+    cursor: pointer;
+  }
+
+  .search-wrap {
+    padding: 0 1rem;
+  }
+
+  .search {
+    width: 100%;
+    border: 0;
+    border-radius: 1.2rem;
+    background: var(--wa-search);
+    color: var(--wa-text);
+    font-size: 1.02rem;
+    padding: 0.78rem 1rem;
+    box-sizing: border-box;
+  }
+
+  .search::placeholder {
+    color: var(--wa-muted);
+  }
+
+  .filters {
+    display: flex;
+    gap: 0.55rem;
+    padding: 0.62rem 1rem 0.35rem;
+    flex-wrap: wrap;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--wa-pill-border);
+    border-radius: 999px;
+    color: var(--wa-pill-text);
+    font-size: 0.92rem;
+    font-weight: 600;
+    padding: 0.3rem 0.72rem;
+    background: transparent;
+  }
+
+  .pill.active {
+    border-color: #1f6f52;
+    background: #103529;
+    color: #80f2c1;
+  }
+
+  .chat-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--wa-separator);
+  }
+
+  .chat-row {
+    display: grid;
+    grid-template-columns: 2.9rem 1fr auto;
+    gap: 0.72rem;
+    align-items: center;
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid rgba(32, 44, 51, 0.7);
+  }
+
+  .chat-row.version-row {
+    opacity: 0.72;
+  }
+
+  .chat-row.version-row .pin {
+    opacity: 0.78;
+  }
+
+  .chat-row.soft-version-row {
+    opacity: 0.72;
+  }
+
+  .chat-row.soft-version-row .pin {
+    opacity: 0.78;
+  }
+
+  .chat-row.inactive-row {
+    opacity: 0.72;
+  }
+
+  .chat-avatar {
+    width: 2.7rem;
+    height: 2.7rem;
+    border-radius: 50%;
+    background: linear-gradient(145deg, var(--wa-avatar-green), var(--wa-avatar-green-2));
+    color: #063320;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    font-size: 1.05rem;
+  }
+
+  .chat-main {
+    min-width: 0;
+  }
+
+  .chat-title {
+    margin: 0;
+    font-size: 1.1rem;
+    line-height: 1.12;
+    font-weight: 600;
+  }
+
+  .chat-preview {
+    margin-top: 0.24rem;
+    color: var(--wa-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chat-meta {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.28rem;
+    min-width: 3.1rem;
+  }
+
+  .chat-time {
+    color: var(--wa-muted);
+    font-size: 0.84rem;
+  }
+
+  .chat-time.attention {
+    color: #0ddf81;
+    font-weight: 700;
+  }
+
+  .unread-badge {
+    width: 0.72rem;
+    height: 0.72rem;
+    border-radius: 999px;
+    background: var(--wa-unread);
+    color: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0;
+    font-weight: 700;
+    padding: 0;
+  }
+
+  .pin {
+    color: #9eabb3;
+    font-size: 0.96rem;
+  }
+
+  .chat-link {
+    color: inherit;
+    text-decoration: none;
+    display: contents;
+  }
+
+  .bottom-nav {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border-top: 1px solid var(--wa-separator);
+    background: #0f161b;
+  }
+
+  .bottom-item {
+    text-decoration: none;
+    color: #c6d1d7;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2rem;
+    min-height: 4rem;
+    font-size: 0.93rem;
+  }
+
+  .bottom-item .icon {
+    font-size: 1.25rem;
+    line-height: 1;
+  }
+
+  .bottom-item.active {
+    color: #73f2b7;
+    font-weight: 700;
+  }
+
+  .ghost-ui {
+    opacity: 0.18;
+    color: #e4eaed;
+    cursor: not-allowed !important;
+    position: relative;
+  }
+
+  .ghost-ui::after {
+    content: attr(data-hint);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 0.32rem);
+    transform: translateX(-50%);
+    background: var(--wa-tooltip-bg);
+    color: #d8dee2;
+    border: 1px solid #304047;
+    border-radius: 0.42rem;
+    padding: 0.24rem 0.45rem;
+    font-size: 0.74rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.14s linear 0.5s;
+    z-index: 30;
+  }
+
+  .ghost-ui:hover::after {
+    opacity: 1;
+  }
+</style>
+
+<%
+  const titleText =
+    typeof appTitle !== "undefined" && appTitle
+      ? appTitle
+      : typeof appName !== "undefined" && appName
+        ? appName
+        : "Whatsapper";
+  const rows = [
+    {
+      icon: "💬",
+      title: "Chats",
+      subtitle: "Open chat table and chat IDs",
+      route: "chats",
+      meta: "open",
+      attention: false,
+    },
+    {
+      icon: "🪵",
+      title: "Logs",
+      subtitle: "Consolidated runtime and server logs",
+      route: "logs",
+      meta: "open",
+      attention: false,
+    },
+    {
+      icon: "📞",
+      title: "Stats",
+      subtitle: "WebSocket clients and traffic",
+      route: "ws-clients",
+      meta: "open",
+      attention: false,
+    },
+    {
+      icon: "🔐",
+      title: "QR",
+      subtitle: "Activate login if needed",
+      route: "qr",
+      meta: qrNeedsAttention ? "now" : "ok",
+      attention: Boolean(qrNeedsAttention),
+      dimmed: !qrNeedsAttention,
+    },
+    {
+      icon: "🧩",
+      title: "Whatsapp-web-js version",
+      subtitle: "Hotswap runtime version",
+      route: "hotswap",
+      meta: whatsappWebJsVersion || "unknown",
+      attention: false,
+      pinned: true,
+    },
+    {
+      icon: "📦",
+      title: `${titleText} integration version`,
+      subtitle: integrationVersionMismatch
+        ? "Restart Home Assistant core to update..."
+        : "Home Assistant custom component",
+      route: null,
+      meta: integrationVersion || "unknown",
+      attention: Boolean(integrationVersionMismatch),
+      dimmed: Boolean(integrationVersionMismatch),
+      pinned: !integrationVersionMismatch,
+      softPinned: true,
+    },
+    {
+      icon: "📦",
+      title: "Whatsapper app version",
+      subtitle: devBuild ? "Dev build" : "Release build",
+      route: null,
+      meta: appVersion || "unknown",
+      attention: false,
+      pinned: true,
+    },
+  ];
+%>
+
+<div class="window">
+  <header class="top-bar">
+    <h1><%= titleText %></h1>
+    <div class="top-actions">
+      <button
+        type="button"
+        class="icon-button ghost-ui non-op"
+        data-hint="just looks good, nothing to do here"
+      >
+        +
+      </button>
+      <button
+        type="button"
+        class="icon-button ghost-ui non-op"
+        data-hint="just looks good, nothing to do here"
+      >
+        ⋮
+      </button>
+    </div>
+  </header>
+
+  <div class="search-wrap ghost-ui" data-hint="just looks good, nothing to do here">
+    <input class="search non-op" type="text" placeholder="Ask Meta AI or Search" />
+  </div>
+
+  <div class="filters">
+    <span class="pill active ghost-ui" data-hint="just looks good, nothing to do here">All</span>
+    <span class="pill ghost-ui" data-hint="just looks good, nothing to do here">Unread 0</span>
+    <span class="pill ghost-ui" data-hint="just looks good, nothing to do here">Favorites</span>
+    <span class="pill ghost-ui" data-hint="just looks good, nothing to do here">Groups 0</span>
+  </div>
+
+  <ul class="chat-list">
+    <% rows.forEach((item) => { %>
+      <li class="chat-row <%= item.pinned ? "version-row" : "" %> <%= item.softPinned ? "soft-version-row" : "" %> <%= item.dimmed ? "inactive-row" : "" %>">
+        <% if (item.route) { %>
+          <a class="chat-link" data-app-route="<%= item.route %>" href="<%= item.route %>">
+            <div class="chat-avatar"><%= item.icon %></div>
+            <div class="chat-main">
+              <h3 class="chat-title"><%= item.title %></h3>
+              <div class="chat-preview"><%= item.subtitle %></div>
+            </div>
+            <div class="chat-meta">
+              <div class="chat-time <%= item.attention ? "attention" : "" %>"><%= item.meta %></div>
+              <% if (item.attention) { %>
+                <span class="unread-badge"></span>
+              <% } %>
+              <% if (item.pinned) { %>
+                <span class="pin">📌</span>
+              <% } %>
+            </div>
+          </a>
+        <% } else { %>
+          <div class="chat-avatar"><%= item.icon %></div>
+          <div class="chat-main">
+            <h3 class="chat-title"><%= item.title %></h3>
+            <div class="chat-preview"><%= item.subtitle %></div>
+          </div>
+          <div class="chat-meta">
+            <div class="chat-time <%= item.attention ? "attention" : "" %>"><%= item.meta %></div>
+            <% if (item.attention) { %>
+              <span class="unread-badge"></span>
+            <% } %>
+            <% if (item.pinned) { %>
+              <span class="pin">📌</span>
+            <% } %>
+          </div>
+        <% } %>
+      </li>
+    <% }); %>
+  </ul>
+
+  <nav class="bottom-nav">
+    <a class="bottom-item active" data-app-route="chats" href="chats">
+      <span class="icon">💬</span>
+      <span>Chats</span>
+    </a>
+    <a class="bottom-item" data-app-route="logs" href="logs">
+      <span class="icon">🪵</span>
+      <span>Logs</span>
+    </a>
+    <a
+      class="bottom-item ghost-ui non-op"
+      href="#"
+      data-hint="just looks good, nothing to do here"
+    >
+      <span class="icon">👥</span>
+      <span>Communities</span>
+    </a>
+    <a class="bottom-item" data-app-route="ws-clients" href="ws-clients">
+      <span class="icon">📞</span>
+      <span>Stats</span>
+    </a>
+  </nav>
+</div>
+
+<script>
+  (function () {
+    const knownRoutes = new Set(["chats", "qr", "ws-clients", "hotswap", "logs"]);
+    const segments = (location.pathname || "/").split("/").filter(Boolean);
+    if (segments.length > 0 && knownRoutes.has(segments[segments.length - 1])) {
+      segments.pop();
+    }
+    const basePath = segments.length === 0 ? "/" : `/${segments.join("/")}/`;
+
+    document.querySelectorAll("a[data-app-route]").forEach((anchor) => {
+      const route = anchor.getAttribute("data-app-route");
+      anchor.href = `${basePath}${route}`;
+    });
+
+    document.querySelectorAll(".non-op").forEach((element) => {
+      element.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+    });
+  })();
+</script>
