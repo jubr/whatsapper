@@ -136,3 +136,21 @@ File: `docs/automation-translate-home-assistant-chat.yaml`
   - `docs/ui-guidelines.md`
   - top-level docs snippets (`DOCS.md`, `README.md`) when examples change.
 
+## 14) Installable software/tooling
+
+- Base expected tooling:
+  - Node.js + npm
+  - Python 3
+  - Docker + Buildx (CI)
+  - Git + GitHub Actions
+- Runtime JavaScript dependency:
+  - `whatsapp-web.js` (supports runtime hotswap as implemented)
+- When adding/updating dependencies:
+  - prefer package managers (`npm`, `pip`, etc.)
+  - install the latest stable version unless a strict compatibility pin is required
+  - do not invent ad-hoc versions
+- CI/build environment should retain:
+  - `python3` (used for workflow pre-build version sync scripts)
+  - `node`/`npm` (build/runtime)
+  - Docker build tooling for multi-arch images.
+
