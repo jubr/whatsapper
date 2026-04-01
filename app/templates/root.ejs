@@ -313,6 +313,14 @@
       attention: false,
     },
     {
+      icon: "✉️",
+      title: "Send test message",
+      subtitle: "Pick a chat and send a quick test",
+      route: "send-test",
+      meta: "open",
+      attention: false,
+    },
+    {
       icon: "🔐",
       title: "QR",
       subtitle: "Activate login if needed",
@@ -453,7 +461,7 @@
 
 <script>
   (function () {
-    const knownRoutes = new Set(["chats", "qr", "ws-clients", "hotswap", "logs"]);
+    const knownRoutes = new Set(["chats", "qr", "ws-clients", "hotswap", "logs", "send-test"]);
     const segments = (location.pathname || "/").split("/").filter(Boolean);
     if (segments.length > 0 && knownRoutes.has(segments[segments.length - 1])) {
       segments.pop();

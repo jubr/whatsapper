@@ -619,6 +619,35 @@ fastify.get("/ws-clients", function handler(_, reply) {
   reply.view("ws-clients.ejs", getUiVersions());
 });
 
+fastify.get("/send-test", function handler(_, reply) {
+  reply.view("send-test.ejs", getUiVersions());
+});
+
+fastify.post("/api/v1/send-test", async function handler(request, reply) {
+  const { chatId, message } = request.body || {};
+  if (typeof chatId !== "string" || !chatId.trim()) {
+    reply.statusCode = 400;
+    return reply.send({ error: "Missing chatId" });
+  }
+  if (typeof message !== "string" || !message.trim()) {
+    reply.statusCode = 400;
+    return reply.send({ error: "Missing message" });
+  }
+  const activeClient = ensureActiveClient();
+  if (!activeClient) {
+    reply.statusCode = 503;
+    return reply.send({ error: "Client not initialized" });
+  }
+  try {
+    const response = await activeClient.sendMessage(chatId.trim(), message.trim());
+    logServer("info", "Send-test message sent", { chatId: chatId.trim(), messageLength: message.trim().length });
+    return reply.send({ ok: true, messageId: response?.id?._serialized || null });
+  } catch (error) {
+    reply.statusCode = 500;
+    return reply.send({ error: String(error?.message || error) });
+  }
+});
+
 fastify.get("/qr", function handler(_, reply) {
   const qrPayload = getQr();
   return reply.view("qr.ejs", {
