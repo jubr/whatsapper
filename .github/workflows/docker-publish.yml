@@ -1,17 +1,25 @@
-name: Docker Release
+name: Publish HA app images
 
 on:
   push:
+    branches:
+      - main
+      - cursor/**
     tags:
-      - '*'
-
-env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+      - "*"
+  workflow_dispatch:
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+          - arch: aarch64
+            platform: linux/arm64
     permissions:
       contents: read
       packages: write
@@ -19,6 +27,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -26,28 +36,231 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to the Container registry
+      - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+      - name: Compute release version
+        id: version
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          DESCRIBE=$(git describe --tags --long --abbrev=4 --match "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || true)
+          if [ -z "$DESCRIBE" ]; then
+            DESCRIBE=$(git describe --tags --long --abbrev=4 --match "[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || true)
+          fi
 
-      - name: Build and push Docker image
+          if [[ "$DESCRIBE" =~ ^v?([0-9]+\.[0-9]+\.[0-9]+)-([0-9]+)-g([0-9a-f]{4,})$ ]]; then
+            TAG_BASE="${BASH_REMATCH[1]}"
+            COMMITS_AHEAD="${BASH_REMATCH[2]}"
+            SHA4="${BASH_REMATCH[3]:0:4}"
+            if [ "$COMMITS_AHEAD" -eq 0 ]; then
+              RELEASE_VERSION="$TAG_BASE"
+              IS_DIRTY_BUILD=0
+            else
+              RELEASE_VERSION="${TAG_BASE}-${COMMITS_AHEAD}-${SHA4}"
+              IS_DIRTY_BUILD=1
+            fi
+          else
+            SHA4=$(git rev-parse --short=4 HEAD)
+            RELEASE_VERSION="${BASE_VERSION}-0-${SHA4}"
+            IS_DIRTY_BUILD=1
+          fi
+
+          if [ "$IS_DIRTY_BUILD" -eq 1 ]; then
+            APP_RUNTIME_NAME="whatsappur"
+            APP_RUNTIME_PORT="3001"
+            IMAGE_REPO="ghcr.io/jubr/ha-app-whatsappur-${{ matrix.arch }}"
+          else
+            APP_RUNTIME_NAME="whatsapper"
+            APP_RUNTIME_PORT="3000"
+            IMAGE_REPO="ghcr.io/jubr/ha-app-whatsapper-${{ matrix.arch }}"
+          fi
+
+          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "image_repo=$IMAGE_REPO" >> "$GITHUB_OUTPUT"
+          echo "full_tag=${IMAGE_REPO}:${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "app_runtime_name=$APP_RUNTIME_NAME" >> "$GITHUB_OUTPUT"
+          echo "app_runtime_port=$APP_RUNTIME_PORT" >> "$GITHUB_OUTPUT"
+
+      - name: Sync integration version before build
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import re
+
+          release_version = os.environ["RELEASE_VERSION"].strip()
+          if not release_version:
+              raise SystemExit("RELEASE_VERSION is empty")
+
+          manifest_path = pathlib.Path("homeassistant/custom_components/whatsapper/manifest.json")
+          init_py_path = pathlib.Path("homeassistant/custom_components/whatsapper/__init__.py")
+
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          manifest["version"] = release_version
+          manifest_path.write_text(json.dumps(manifest, indent=4) + "\n", encoding="utf-8")
+
+          init_py = init_py_path.read_text(encoding="utf-8")
+          init_py_updated, replacements = re.subn(
+              r'INTEGRATION_RUNTIME_VERSION\s*=\s*["\'][^"\']+["\']',
+              f'INTEGRATION_RUNTIME_VERSION = "{release_version}"',
+              init_py,
+              count=1,
+          )
+          if replacements != 1:
+              raise SystemExit("Could not update INTEGRATION_RUNTIME_VERSION in __init__.py")
+          init_py_path.write_text(init_py_updated, encoding="utf-8")
+
+          print(f"Synced integration version to {release_version}")
+          PY
+
+      - name: Build and push image
         uses: docker/build-push-action@v5
         with:
           context: .
+          platforms: ${{ matrix.platform }}
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.version.outputs.full_tag }}
+          build-args: |
+            APP_BUILD_VERSION=${{ steps.version.outputs.release_version }}
+            APP_RUNTIME_NAME=${{ steps.version.outputs.app_runtime_name }}
+            APP_PORT=${{ steps.version.outputs.app_runtime_port }}
+            WWEBJS_REF=${{ vars.WWEBJS_REF }}
+
+  update-main-addon-config:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute release version
+        id: version
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version")
+          DESCRIBE=$(git describe --tags --long --abbrev=4 --match "v[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || true)
+          if [ -z "$DESCRIBE" ]; then
+            DESCRIBE=$(git describe --tags --long --abbrev=4 --match "[0-9]*.[0-9]*.[0-9]*" 2>/dev/null || true)
+          fi
+
+          if [[ "$DESCRIBE" =~ ^v?([0-9]+\.[0-9]+\.[0-9]+)-([0-9]+)-g([0-9a-f]{4,})$ ]]; then
+            TAG_BASE="${BASH_REMATCH[1]}"
+            COMMITS_AHEAD="${BASH_REMATCH[2]}"
+            SHA4="${BASH_REMATCH[3]:0:4}"
+            if [ "$COMMITS_AHEAD" -eq 0 ]; then
+              RELEASE_VERSION="$TAG_BASE"
+              IS_DIRTY_BUILD=0
+            else
+              RELEASE_VERSION="${TAG_BASE}-${COMMITS_AHEAD}-${SHA4}"
+              IS_DIRTY_BUILD=1
+            fi
+          else
+            SHA4=$(git rev-parse --short=4 HEAD)
+            RELEASE_VERSION="${BASE_VERSION}-0-${SHA4}"
+            IS_DIRTY_BUILD=1
+          fi
+
+          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "is_dirty_build=$IS_DIRTY_BUILD" >> "$GITHUB_OUTPUT"
+
+      - name: Write addon config file to main
+        if: github.event_name == 'push'
+        run: |
+          RELEASE_VERSION="${{ steps.version.outputs.release_version }}"
+          IS_DIRTY_BUILD="${{ steps.version.outputs.is_dirty_build }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -B main-sync origin/main
+
+          if [ "$IS_DIRTY_BUILD" = "1" ]; then
+            TARGET_FILE="debug/whatsappur/config.yaml"
+            mkdir -p debug/whatsappur
+            {
+              printf '%s\n' 'name: "Whatsappur"'
+              printf '%s\n' 'slug: "whatsappur"'
+              printf '%s\n' 'description: "Expose whatsapp-web.js via HTTP and websocket API with Home Assistant integration files bundled."'
+              printf 'version: "%s"\n' "${RELEASE_VERSION}"
+              printf '%s\n' 'startup: services'
+              printf '%s\n' 'boot: auto'
+              printf '%s\n' 'init: false'
+              printf '%s\n' 'discovery:'
+              printf '%s\n' '  - whatsappur'
+              printf '%s\n' 'arch:'
+              printf '%s\n' '  - amd64'
+              printf '%s\n' '  - aarch64'
+              printf '%s\n' 'image: "ghcr.io/jubr/ha-app-whatsappur-{arch}"'
+              printf '%s\n' 'url: "https://github.com/jubr/whatsapper/blob/main/docs/homeassistant-integration.md"'
+              printf '%s\n' 'ingress: true'
+              printf '%s\n' 'ingress_port: 3001'
+              printf "%s\n" "ingress_entry: ''"
+              printf '%s\n' 'ingress_stream: true'
+              printf '%s\n' 'panel_icon: mdi:whatsapp'
+              printf '%s\n' 'panel_title: Whatsappur'
+              printf '%s\n' 'ports:'
+              printf '%s\n' '  3001/tcp: null'
+              printf '%s\n' 'ports_description:'
+              printf '%s\n' '  3001/tcp: Whatsappur HTTP + WebSocket API (enable port mapping if you need direct LAN access)'
+              printf '%s\n' 'map:'
+              printf '%s\n' '  - type: homeassistant_config'
+              printf '%s\n' '    read_only: false'
+              printf '%s\n' 'environment:'
+              printf '%s\n' '  HA_CUSTOM_COMPONENTS_PATH: /homeassistant/custom_components'
+              printf '  APP_BUILD_VERSION: "%s"\n' "${RELEASE_VERSION}"
+              printf '%s\n' '  APP_RUNTIME_NAME: whatsappur'
+              printf '%s\n' '  APP_PORT: "3001"'
+            } > "${TARGET_FILE}"
+          else
+            TARGET_FILE="config.yaml"
+            {
+              printf '%s\n' 'name: "Whatsapper"'
+              printf '%s\n' 'slug: "whatsapper"'
+              printf '%s\n' 'description: "Expose whatsapp-web.js via HTTP and websocket API with Home Assistant integration files bundled."'
+              printf 'version: "%s"\n' "${RELEASE_VERSION}"
+              printf '%s\n' 'startup: services'
+              printf '%s\n' 'boot: auto'
+              printf '%s\n' 'init: false'
+              printf '%s\n' 'discovery:'
+              printf '%s\n' '  - whatsapper'
+              printf '%s\n' 'arch:'
+              printf '%s\n' '  - amd64'
+              printf '%s\n' '  - aarch64'
+              printf '%s\n' 'image: "ghcr.io/jubr/ha-app-whatsapper-{arch}"'
+              printf '%s\n' 'url: "https://github.com/jubr/whatsapper/blob/main/docs/homeassistant-integration.md"'
+              printf '%s\n' 'ingress: true'
+              printf '%s\n' 'ingress_port: 3000'
+              printf "%s\n" "ingress_entry: ''"
+              printf '%s\n' 'ingress_stream: true'
+              printf '%s\n' 'panel_icon: mdi:whatsapp'
+              printf '%s\n' 'panel_title: Whatsapper'
+              printf '%s\n' 'ports:'
+              printf '%s\n' '  3000/tcp: null'
+              printf '%s\n' 'ports_description:'
+              printf '%s\n' '  3000/tcp: Whatsapper HTTP + WebSocket API (enable port mapping if you need direct LAN access)'
+              printf '%s\n' 'map:'
+              printf '%s\n' '  - type: homeassistant_config'
+              printf '%s\n' '    read_only: false'
+              printf '%s\n' 'environment:'
+              printf '%s\n' '  HA_CUSTOM_COMPONENTS_PATH: /homeassistant/custom_components'
+            } > "${TARGET_FILE}"
+          fi
+
+          git add "${TARGET_FILE}"
+          if git diff --cached --quiet; then
+            echo "${TARGET_FILE} already up to date on main"
+            exit 0
+          fi
+
+          git commit -m "Update ${TARGET_FILE} to ${RELEASE_VERSION} [skip ci]"
+          git push origin HEAD:main

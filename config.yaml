@@ -5,6 +5,8 @@ version: "2.0.0"
 startup: services
 boot: auto
 init: false
+discovery:
+  - whatsapper
 arch:
   - amd64
   - aarch64
@@ -12,7 +14,7 @@ image: "ghcr.io/jubr/ha-app-whatsapper-{arch}"
 url: "https://github.com/jubr/whatsapper/blob/main/docs/homeassistant-integration.md"
 ingress: true
 ingress_port: 3000
-ingress_entry: /
+ingress_entry: ''
 ingress_stream: true
 panel_icon: mdi:whatsapp
 panel_title: Whatsapper
@@ -24,4 +26,4 @@ map:
   - type: homeassistant_config
     read_only: false
 environment:
-  HA_CUSTOM_COMPONENTS_PATH: /config/custom_components
+  HA_CUSTOM_COMPONENTS_PATH: /homeassistant/custom_components

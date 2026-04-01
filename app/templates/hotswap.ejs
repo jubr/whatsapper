@@ -1,0 +1,497 @@
+<style>
+  :root {
+    color-scheme: dark;
+    --wa-bg: #0b141a;
+    --wa-header: #0a1014;
+    --wa-card: #111b21;
+    --wa-text: #e9edef;
+    --wa-muted: #8696a0;
+    --wa-green: #25d366;
+    --wa-green-2: #128c7e;
+    --wa-tooltip-bg: rgba(15, 20, 23, 0.96);
+  }
+
+  body {
+    margin: 0;
+    background: var(--wa-bg);
+    color: var(--wa-text);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  .shell {
+    max-width: 72rem;
+    margin: 0.9rem auto;
+    border-radius: 0.4rem;
+    overflow: hidden;
+    background: var(--wa-card);
+    border: 1px solid #1d2a30;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.38);
+  }
+
+  .fake-chat-header {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    gap: 0.78rem;
+    align-items: center;
+    background: var(--wa-header);
+    padding: 0.9rem 0.95rem;
+    border-bottom: 1px solid #1d2a30;
+  }
+
+  .back-link {
+    color: #d4dee2;
+    text-decoration: none;
+    font-size: 1.95rem;
+    line-height: 1;
+    padding: 0 0.2rem;
+  }
+
+  .back-link:hover {
+    color: #f2f7f9;
+  }
+
+  .avatar {
+    width: 2.8rem;
+    height: 2.8rem;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(150deg, #1f9a64, #39b278);
+    color: #052e1d;
+    font-weight: 700;
+  }
+
+  .heading-title {
+    margin: 0;
+    font-size: 1.9rem;
+    line-height: 1.05;
+    font-weight: 500;
+  }
+
+  .heading-subtitle {
+    margin-top: 0.16rem;
+    color: var(--wa-muted);
+    font-size: 1rem;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .ghost-ui {
+    opacity: 0.18;
+    color: #e4eaed;
+    cursor: not-allowed !important;
+    position: relative;
+  }
+
+  .ghost-ui::after {
+    content: attr(data-hint);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 0.35rem);
+    transform: translateX(-50%);
+    background: var(--wa-tooltip-bg);
+    color: #d8dee2;
+    border: 1px solid #304047;
+    border-radius: 0.42rem;
+    padding: 0.24rem 0.45rem;
+    font-size: 0.74rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.14s linear 0.5s;
+    z-index: 30;
+  }
+
+  .ghost-ui:hover::after {
+    opacity: 1;
+  }
+
+  .header-action-icon {
+    border: 0;
+    background: transparent;
+    color: #dbe4e8;
+    font-size: 1.35rem;
+    line-height: 1;
+    padding: 0.1rem 0.2rem;
+  }
+
+  .content {
+    padding: 1.1rem 1.2rem 1.3rem;
+  }
+
+  .toolbar {
+    margin-bottom: 1rem;
+  }
+
+  .toolbar select,
+  .toolbar button {
+    border: 1px solid #2d3b42;
+    border-radius: 0.45rem;
+    background: #0f1519;
+    color: var(--wa-text);
+    padding: 0.45rem 0.65rem;
+    font-size: 0.95rem;
+  }
+
+  .toolbar select {
+    min-width: 28rem;
+  }
+
+  .toolbar button {
+    cursor: pointer;
+    margin-left: 0.35rem;
+  }
+
+  .toolbar button:hover:not(:disabled) {
+    border-color: var(--wa-green);
+    color: #6cf09f;
+  }
+
+  .toolbar button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .runtime-state {
+    margin-bottom: 1rem;
+    font-family:
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      "Liberation Mono",
+      "Courier New",
+      monospace;
+    color: #d7e5dc;
+  }
+
+  .log-box {
+    border: 1px solid #2d3b42;
+    padding: 0.75rem;
+    background: #0f1519;
+    color: #d7e5dc;
+    height: 24rem;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    font-family:
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      "Liberation Mono",
+      "Courier New",
+      monospace;
+    border-radius: 0.55rem;
+  }
+
+  a {
+    color: var(--wa-green);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  a:hover {
+    color: #6cf09f;
+    text-decoration: underline;
+  }
+</style>
+
+<div class="shell">
+  <header class="fake-chat-header">
+    <a class="back-link" href=".">←</a>
+    <div class="avatar">🧩</div>
+    <div>
+      <h1 class="heading-title">Whatsapp-web-js version</h1>
+      <div class="heading-subtitle">3 online</div>
+    </div>
+    <div class="header-actions">
+      <button
+        class="header-action-icon ghost-ui"
+        type="button"
+        data-hint="just looks good, nothing to do here"
+      >
+        🎥
+      </button>
+      <button
+        class="header-action-icon ghost-ui"
+        type="button"
+        data-hint="just looks good, nothing to do here"
+      >
+        ▾
+      </button>
+      <button
+        class="header-action-icon ghost-ui"
+        type="button"
+        data-hint="just looks good, nothing to do here"
+      >
+        ⋮
+      </button>
+    </div>
+  </header>
+
+  <div class="content">
+    <p><a href=".">Back</a></p>
+
+  <div class="toolbar">
+    <label for="refSelect"><strong>Target ref</strong></label><br />
+    <select id="refSelect"></select>
+    <button id="applyButton">Apply</button>
+    <button id="refreshButton">Refresh refs</button>
+  </div>
+
+  <div id="runtimeState" class="runtime-state"></div>
+
+  <h2>Progress and connection status</h2>
+  <div id="logBox" class="log-box"></div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const refSelect = document.getElementById("refSelect");
+    const applyButton = document.getElementById("applyButton");
+    const refreshButton = document.getElementById("refreshButton");
+    const runtimeStateEl = document.getElementById("runtimeState");
+    const logBox = document.getElementById("logBox");
+
+    let runtimeState = null;
+    let refsPayload = null;
+    let runtimeWs = null;
+    let hasRenderedSnapshotLogs = false;
+
+    const getBasePath = () => {
+      const pathname = location.pathname || "/";
+      const segments = pathname.split("/").filter(Boolean);
+      if (segments.length === 0) {
+        return "/";
+      }
+      segments.pop();
+      return segments.length === 0 ? "/" : `/${segments.join("/")}/`;
+    };
+
+    const buildAppUrl = (relativePath) => {
+      const sanitized = String(relativePath || "").replace(/^\/+/, "");
+      return `${getBasePath()}${sanitized}`;
+    };
+
+    const toDateString = (value) => {
+      if (!value) return "n/a";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? value : date.toISOString();
+    };
+
+    const appendLogLine = (line, level) => {
+      const el = document.createElement("div");
+      if (level === "error") {
+        el.style.color = "#ff8f8f";
+      } else if (level === "warn") {
+        el.style.color = "#f8d66d";
+      } else if (level === "info") {
+        el.style.color = "#86efac";
+      } else {
+        el.style.color = "#ddd";
+      }
+      el.textContent = line;
+      logBox.appendChild(el);
+      logBox.scrollTop = logBox.scrollHeight;
+    };
+
+    const appendStructuredLog = (entry) => {
+      const stamp = toDateString(entry.timestamp);
+      const level = entry.level || "info";
+      const message = entry.message || "log";
+      const detailsText =
+        entry.details && typeof entry.details === "object"
+          ? Object.entries(entry.details)
+              .filter(([, value]) => value !== null && value !== undefined)
+              .map(([key, value]) => {
+                if (typeof value === "object") {
+                  return `${key}=[complex]`;
+                }
+                return `${key}=${String(value).replace(/\s+/g, " ").trim()}`;
+              })
+              .filter(Boolean)
+              .join(" ")
+          : "";
+      const suffix = detailsText ? ` | ${detailsText}` : "";
+      appendLogLine(`[${stamp}] [${level}] ${message}${suffix}`, level);
+    };
+
+    const renderRuntimeState = () => {
+      if (!runtimeState) {
+        runtimeStateEl.textContent = "Loading runtime state...";
+        applyButton.disabled = true;
+        return;
+      }
+
+      runtimeStateEl.textContent = [
+        `appName=${runtimeState.appName}`,
+        `appPort=${runtimeState.appPort}`,
+        `currentChoice=${runtimeState.currentChoice}`,
+        `installedVersion=${runtimeState.installedVersion}`,
+        `initialized=${runtimeState.initialized}`,
+        `swapping=${runtimeState.swapping}`,
+        `devBuild=${Boolean(runtimeState.devBuild)}`,
+      ].join(" | ");
+
+      applyButton.disabled = Boolean(runtimeState.swapping);
+      refSelect.disabled = Boolean(runtimeState.swapping);
+    };
+
+    const renderRefs = () => {
+      if (!refsPayload) {
+        return;
+      }
+
+      const previousChoice = runtimeState?.currentChoice || refSelect.value;
+      refSelect.innerHTML = "";
+
+      const allOptions = [refsPayload.builtIn, ...(refsPayload.refs || [])];
+
+      for (const ref of allOptions) {
+        const option = document.createElement("option");
+        option.value = ref.choice;
+
+        if (ref.type === "built-in") {
+          option.textContent = `[built-in][marked] ${ref.label}`;
+        } else {
+          option.textContent = `[${ref.type}] ${ref.label} | ${toDateString(ref.updatedAt)}`;
+        }
+
+        if (ref.choice === previousChoice) {
+          option.selected = true;
+        }
+        refSelect.appendChild(option);
+      }
+    };
+
+    const handleSnapshot = (payload) => {
+      runtimeState = payload.state || runtimeState;
+      renderRuntimeState();
+
+      if (!hasRenderedSnapshotLogs && Array.isArray(payload.logs)) {
+        logBox.innerHTML = "";
+        payload.logs.forEach((entry) => appendStructuredLog(entry));
+        hasRenderedSnapshotLogs = true;
+      }
+    };
+
+    const fetchRuntimeState = async () => {
+      const response = await fetch(buildAppUrl("api/v1/wwebjs/runtime"));
+      const payload = await response.json();
+      runtimeState = payload;
+      renderRuntimeState();
+      renderRefs();
+    };
+
+    const fetchRefs = async (refresh = false) => {
+      const response = await fetch(
+        `${buildAppUrl("api/v1/wwebjs/refs")}${refresh ? "?refresh=1" : ""}`,
+      );
+      const payload = await response.json();
+      refsPayload = payload;
+      renderRefs();
+    };
+
+    const openRuntimeSocket = () => {
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      const runtimeWsUrl = new URL(buildAppUrl("api/v1/wwebjs/ws"), location.origin);
+      runtimeWsUrl.protocol = `${protocol}:`;
+      runtimeWs = new WebSocket(runtimeWsUrl.toString());
+
+      runtimeWs.addEventListener("open", () => {
+        appendLogLine("[ws] Connected to runtime progress stream", "info");
+      });
+
+      runtimeWs.addEventListener("close", () => {
+        appendLogLine("[ws] Disconnected from runtime stream. Reconnecting...", "warn");
+        setTimeout(openRuntimeSocket, 2000);
+      });
+
+      runtimeWs.addEventListener("error", () => {
+        appendLogLine("[ws] Runtime stream error", "error");
+      });
+
+      runtimeWs.addEventListener("message", (event) => {
+        let payload;
+        try {
+          payload = JSON.parse(event.data);
+        } catch (_) {
+          appendLogLine(`[ws] ${event.data}`, "info");
+          return;
+        }
+
+        if (payload.type === "snapshot") {
+          handleSnapshot(payload);
+          return;
+        }
+
+        if (payload.type === "refs") {
+          refsPayload = payload.payload;
+          renderRefs();
+          return;
+        }
+
+        if (payload.type === "log") {
+          appendStructuredLog(payload);
+          return;
+        }
+      });
+    };
+
+    applyButton.addEventListener("click", async () => {
+      const choice = refSelect.value;
+      if (!choice) return;
+
+      appendLogLine(`[ui] Applying choice: ${choice}`, "info");
+      applyButton.disabled = true;
+
+      try {
+        const response = await fetch(buildAppUrl("api/v1/wwebjs/hotswap"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ choice }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          appendLogLine(`[ui] Hotswap failed: ${payload.error || response.status}`, "error");
+        } else {
+          runtimeState = payload.result || runtimeState;
+          renderRuntimeState();
+          appendLogLine(`[ui] Hotswap request completed for ${choice}`, "info");
+        }
+      } catch (error) {
+        appendLogLine(`[ui] Hotswap request error: ${error.message}`, "error");
+      } finally {
+        await fetchRuntimeState();
+      }
+    });
+
+    refreshButton.addEventListener("click", async () => {
+      appendLogLine("[ui] Refreshing refs from GitHub...", "info");
+      try {
+        await fetchRefs(true);
+        if (runtimeWs && runtimeWs.readyState === runtimeWs.OPEN) {
+          runtimeWs.send(JSON.stringify({ type: "refresh_refs" }));
+        }
+      } catch (error) {
+        appendLogLine(`[ui] Ref refresh failed: ${error.message}`, "error");
+      }
+    });
+
+    (async () => {
+      await fetchRuntimeState();
+      await fetchRefs(false);
+      openRuntimeSocket();
+    })().catch((error) => {
+      appendLogLine(`[ui] Startup error: ${error.message}`, "error");
+    });
+  })();
+</script>

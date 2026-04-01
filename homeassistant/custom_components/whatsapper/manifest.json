@@ -1,0 +1,12 @@
+{
+    "domain": "whatsapper",
+    "name": "Whatsapper integration",
+    "codeowners": ["@baldarn", "@jubr"],
+    "documentation": "https://github.com/jubr/whatsapper/blob/main/docs/homeassistant-integration.md",
+    "iot_class": "cloud_push",
+    "issue_tracker": "https://github.com/jubr/whatsapper",
+    "config_flow": true,
+    "single_config_entry": true,
+    "requirements": [],
+    "version": "2026.2.28"
+}

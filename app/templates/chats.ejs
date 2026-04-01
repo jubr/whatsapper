@@ -1,8 +1,221 @@
+<style>
+  :root {
+    color-scheme: dark;
+    --wa-bg: #0b141a;
+    --wa-header: #0a1014;
+    --wa-card: #111b21;
+    --wa-text: #e9edef;
+    --wa-muted: #8696a0;
+    --wa-green: #25d366;
+    --wa-tooltip-bg: rgba(15, 20, 23, 0.96);
+  }
 
-<h1>Chats with chat-id</h1>
+  body {
+    margin: 0;
+    background: var(--wa-bg);
+    color: var(--wa-text);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
 
-<ul>
-<% chats.forEach(function(chat){ %>
-  <li><%= chat.name %>: <%= chat.id %></li>
-<% }); %>
-</ul>
+  .shell {
+    max-width: 72rem;
+    margin: 0.9rem auto;
+    border-radius: 0.4rem;
+    overflow: hidden;
+    background: var(--wa-card);
+    border: 1px solid #1d2a30;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.38);
+  }
+
+  .fake-chat-header {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    gap: 0.78rem;
+    align-items: center;
+    background: var(--wa-header);
+    padding: 0.9rem 0.95rem;
+    border-bottom: 1px solid #1d2a30;
+  }
+
+  .back-link {
+    color: #d4dee2;
+    text-decoration: none;
+    font-size: 1.95rem;
+    line-height: 1;
+    padding: 0 0.2rem;
+  }
+
+  .back-link:hover {
+    color: #f2f7f9;
+  }
+
+  .avatar {
+    width: 2.8rem;
+    height: 2.8rem;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(150deg, #1f9a64, #39b278);
+    color: #052e1d;
+    font-weight: 700;
+  }
+
+  .heading-title {
+    margin: 0;
+    font-size: 1.9rem;
+    line-height: 1.05;
+    font-weight: 500;
+  }
+
+  .heading-subtitle {
+    margin-top: 0.16rem;
+    color: var(--wa-muted);
+    font-size: 1rem;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .ghost-ui {
+    opacity: 0.18;
+    color: #e4eaed;
+    cursor: not-allowed !important;
+    position: relative;
+  }
+
+  .ghost-ui::after {
+    content: attr(data-hint);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 0.35rem);
+    transform: translateX(-50%);
+    background: var(--wa-tooltip-bg);
+    color: #d8dee2;
+    border: 1px solid #304047;
+    border-radius: 0.42rem;
+    padding: 0.24rem 0.45rem;
+    font-size: 0.74rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.14s linear 0.5s;
+    z-index: 30;
+  }
+
+  .ghost-ui:hover::after {
+    opacity: 1;
+  }
+
+  .header-action-icon {
+    border: 0;
+    background: transparent;
+    color: #dbe4e8;
+    font-size: 1.35rem;
+    line-height: 1;
+    padding: 0.1rem 0.2rem;
+  }
+
+  .content {
+    padding: 1.1rem 1.2rem 1.3rem;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 1rem;
+  }
+
+  th,
+  td {
+    border-bottom: 1px solid #2d3b42;
+    padding: 0.55rem 0.45rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    color: var(--wa-muted);
+    font-weight: 600;
+  }
+
+  td.chat-id {
+    font-family:
+      ui-monospace,
+      SFMono-Regular,
+      Menlo,
+      Monaco,
+      Consolas,
+      "Liberation Mono",
+      "Courier New",
+      monospace;
+    color: #d7e5dc;
+  }
+</style>
+
+<%
+  const headerTitle =
+    typeof appTitle !== "undefined" && appTitle
+      ? appTitle
+      : typeof appName !== "undefined" && appName
+        ? appName
+        : "Whatsapper";
+%>
+
+<div class="shell">
+  <header class="fake-chat-header">
+    <a class="back-link" href=".">←</a>
+    <div class="avatar">💬</div>
+    <div>
+      <h1 class="heading-title"><%= headerTitle %> chats</h1>
+      <div class="heading-subtitle">3 online</div>
+    </div>
+    <div class="header-actions">
+      <button
+        class="header-action-icon ghost-ui"
+        type="button"
+        data-hint="just looks good, nothing to do here"
+      >
+        🎥
+      </button>
+      <button
+        class="header-action-icon ghost-ui"
+        type="button"
+        data-hint="just looks good, nothing to do here"
+      >
+        ▾
+      </button>
+      <button
+        class="header-action-icon ghost-ui"
+        type="button"
+        data-hint="just looks good, nothing to do here"
+      >
+        ⋮
+      </button>
+    </div>
+  </header>
+
+  <div class="content">
+    <h2>Chats with chat-id</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Chat ID</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% chats.forEach(function(chat){ %>
+        <tr>
+          <td><%= chat.name %></td>
+          <td class="chat-id"><%= chat.id %></td>
+        </tr>
+      <% }); %>
+    </tbody>
+  </table>
+  </div>
+</div>
