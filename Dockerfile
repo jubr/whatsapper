@@ -11,8 +11,18 @@ COPY docker/entrypoint.sh /workspace/docker/entrypoint.sh
 WORKDIR /workspace
 USER root
 COPY package*.json .
-RUN chmod +x /workspace/docker/entrypoint.sh && npm install && \
-    if [ -n "$WWEBJS_REF" ]; then npm install --no-save "github:pedroslopez/whatsapp-web.js#$WWEBJS_REF"; fi
+RUN chmod +x /workspace/docker/entrypoint.sh && \
+    npm_with_retries() { \
+      local n=0; \
+      until npm "$@"; do \
+        n=$((n+1)); \
+        [ $n -ge 3 ] && echo "npm $* failed after $n retries" >&2 && return 1; \
+        echo "npm $* failed (attempt $n), retrying in $((n*5))s..." >&2; \
+        sleep $((n*5)); \
+      done; \
+    } && \
+    npm_with_retries install && \
+    if [ -n "$WWEBJS_REF" ]; then npm_with_retries install --no-save "github:pedroslopez/whatsapp-web.js#$WWEBJS_REF"; fi
 
 ENV HA_CUSTOM_COMPONENTS_PATH=/homeassistant/custom_components
 ENV WWEBJS_BUILD_REF=${WWEBJS_REF}
