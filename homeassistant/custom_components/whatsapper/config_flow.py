@@ -55,7 +55,7 @@ class WhatsapperConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> config_entries.OptionsFlow:
-        return WhatsapperOptionsFlow(config_entry)
+        return WhatsapperOptionsFlow()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None):
         if self._async_current_entries():
@@ -141,9 +141,6 @@ def _normalize_notify_targets(value: Any) -> str:
 
 class WhatsapperOptionsFlow(config_entries.OptionsFlow):
     """Handle options for Whatsapper."""
-
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
 
     def _current(self, key: str, default: Any) -> Any:
         return self.config_entry.options.get(key, self.config_entry.data.get(key, default))
