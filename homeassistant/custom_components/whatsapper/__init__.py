@@ -18,6 +18,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.loader import async_get_integration
 from .auto_host_port import async_detect_host_port
+from .heartbeat import async_setup_heartbeat
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +29,14 @@ INTEGRATION_RUNTIME_VERSION = "2026.2.28"
 CONF_HOST_PORT = "host_port"
 CONF_WS_PATH = "ws_path"
 DEFAULT_WS_PATH = "/api/v1/events/ws"
+
+# Heartbeat configuration keys (stored in options)
+CONF_HEARTBEAT_ENABLED = "heartbeat_enabled"
+CONF_HEARTBEAT_CHAT_NAME = "heartbeat_chat_name"
+CONF_HEARTBEAT_INTERVAL = "heartbeat_interval_minutes"
+CONF_HEARTBEAT_NOTIFY_TARGETS = "heartbeat_notify_targets"
+DEFAULT_HEARTBEAT_INTERVAL = 5
+HEARTBEAT_MONITOR_KEY = "_heartbeat_monitor"
 MESSAGE_EVENT = "whatsapper_message"
 WS_EVENTS = ("message", "qr", "ready")
 QR_REPAIRS_ISSUE_ID = "qr_required"
@@ -525,6 +534,48 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     return True
 
 
+async def _push_heartbeat_config_to_addon(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    configured_host_port: str | None,
+) -> None:
+    """Push the heartbeat settings from HA options to the add-on REST API."""
+    options = dict(entry.options or {})
+    data = dict(entry.data or {})
+
+    def _get(key: str, default: Any) -> Any:
+        return options.get(key, data.get(key, default))
+
+    enabled = bool(_get(CONF_HEARTBEAT_ENABLED, False))
+    chat_name = str(_get(CONF_HEARTBEAT_CHAT_NAME, "")).strip()
+    interval = int(_get(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL))
+
+    payload = {
+        "enabled": enabled,
+        "chatName": chat_name,
+        "intervalMinutes": max(1, interval),
+    }
+
+    host_port = await async_detect_host_port(hass, configured_host_port)
+    session = async_get_clientsession(hass)
+    url = f"http://{host_port}/api/v1/heartbeat/config"
+    try:
+        async with session.post(
+            url,
+            json=payload,
+            timeout=8,
+        ) as resp:
+            if resp.status == 200:
+                _LOGGER.info("Pushed heartbeat config to add-on: %s", payload)
+            else:
+                body = await resp.text()
+                _LOGGER.warning(
+                    "Heartbeat config push returned HTTP %s: %s", resp.status, body
+                )
+    except Exception as err:  # pylint: disable=broad-except
+        _LOGGER.warning("Failed to push heartbeat config to add-on: %s", err)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Whatsapper from a config entry (UI setup)."""
     domain_data = hass.data.setdefault(DOMAIN, {})
@@ -546,6 +597,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     domain_data[START_LISTENER_CALLBACK_KEY] = _start_listener
     _ensure_stop_listener_registered(hass)
     await _ensure_auto_notify_platform(hass, ws_path)
+
+    heartbeat_monitor = await async_setup_heartbeat(hass, entry, configured_host_port)
+    if heartbeat_monitor is not None:
+        domain_data[HEARTBEAT_MONITOR_KEY] = heartbeat_monitor
+        # Push heartbeat config to the add-on so it starts sending messages.
+        hass.async_create_task(
+            _push_heartbeat_config_to_addon(hass, entry, configured_host_port)
+        )
+
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry_on_update))
     return True
 
@@ -567,6 +627,10 @@ async def async_unload_entry(hass: HomeAssistant, _entry: ConfigEntry) -> bool:
     reload_task = domain_data.get(VERSION_RELOAD_TASK_KEY)
     if reload_task and not reload_task.done():
         reload_task.cancel()
+
+    heartbeat_monitor = domain_data.pop(HEARTBEAT_MONITOR_KEY, None)
+    if heartbeat_monitor is not None:
+        heartbeat_monitor.stop()
 
     domain_data.pop("listener_task", None)
     domain_data.pop(LISTENER_SETTINGS_KEY, None)

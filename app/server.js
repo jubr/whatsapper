@@ -23,6 +23,7 @@ const {
   getStartupPromise,
   WS_SUPPORTED_EVENTS,
 } = require("./whatsappClient");
+const heartbeat = require("./heartbeat");
 
 // web server configuration
 const fastify = require("fastify")({ logger: false });
@@ -619,6 +620,35 @@ fastify.get("/ws-clients", function handler(_, reply) {
   reply.view("ws-clients.ejs", getUiVersions());
 });
 
+fastify.get("/send-test", function handler(_, reply) {
+  reply.view("send-test.ejs", getUiVersions());
+});
+
+fastify.post("/api/v1/send-test", async function handler(request, reply) {
+  const { chatId, message } = request.body || {};
+  if (typeof chatId !== "string" || !chatId.trim()) {
+    reply.statusCode = 400;
+    return reply.send({ error: "Missing chatId" });
+  }
+  if (typeof message !== "string" || !message.trim()) {
+    reply.statusCode = 400;
+    return reply.send({ error: "Missing message" });
+  }
+  const activeClient = ensureActiveClient();
+  if (!activeClient) {
+    reply.statusCode = 503;
+    return reply.send({ error: "Client not initialized" });
+  }
+  try {
+    const response = await activeClient.sendMessage(chatId.trim(), message.trim());
+    logServer("info", "Send-test message sent", { chatId: chatId.trim(), messageLength: message.trim().length });
+    return reply.send({ ok: true, messageId: response?.id?._serialized || null });
+  } catch (error) {
+    reply.statusCode = 500;
+    return reply.send({ error: String(error?.message || error) });
+  }
+});
+
 fastify.get("/qr", function handler(_, reply) {
   const qrPayload = getQr();
   return reply.view("qr.ejs", {
@@ -1002,6 +1032,32 @@ fastify.after(() => {
   );
 });
 
+fastify.get("/api/v1/heartbeat/config", function handler(_, reply) {
+  return reply.send(heartbeat.getConfig());
+});
+
+fastify.post("/api/v1/heartbeat/config", async function handler(request, reply) {
+  const body = request.body || {};
+  const patch = {};
+  if (typeof body.enabled !== "undefined") patch.enabled = body.enabled;
+  if (typeof body.chatName === "string") patch.chatName = body.chatName;
+  if (typeof body.intervalMinutes !== "undefined") {
+    const n = Number(body.intervalMinutes);
+    if (!Number.isFinite(n) || n < 1) {
+      reply.statusCode = 400;
+      return reply.send({ error: "intervalMinutes must be a number >= 1" });
+    }
+    patch.intervalMinutes = n;
+  }
+  try {
+    const updated = await heartbeat.updateConfig(patch);
+    return reply.send(updated);
+  } catch (err) {
+    reply.statusCode = 500;
+    return reply.send({ error: String(err?.message || err) });
+  }
+});
+
 fastify.listen({ port: runtimeIdentity.appPort, host: "0.0.0.0" }, (err) => {
   if (err) {
     logServer("error", "Fastify listen failed", { error: String(err?.message || err) });
@@ -1010,5 +1066,14 @@ fastify.listen({ port: runtimeIdentity.appPort, host: "0.0.0.0" }, (err) => {
   logServer("info", "HTTP server listening", {
     host: "0.0.0.0",
     port: runtimeIdentity.appPort,
+  });
+
+  heartbeat.init({
+    getClient: ensureActiveClient,
+    emitLog: writeRuntimeLog,
+  }).then((cfg) => {
+    logServer("info", "Heartbeat subsystem initialised", cfg);
+  }).catch((err) => {
+    logServer("warn", "Heartbeat init failed", { error: String(err?.message || err) });
   });
 });

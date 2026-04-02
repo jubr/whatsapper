@@ -1,0 +1,441 @@
+<style>
+  :root {
+    color-scheme: dark;
+    --wa-bg: #0b141a;
+    --wa-header: #0a1014;
+    --wa-card: #111b21;
+    --wa-text: #e9edef;
+    --wa-muted: #8696a0;
+    --wa-green: #25d366;
+    --wa-tooltip-bg: rgba(15, 20, 23, 0.96);
+  }
+
+  body {
+    margin: 0;
+    background: var(--wa-bg);
+    color: var(--wa-text);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  .shell {
+    max-width: 72rem;
+    margin: 0.9rem auto;
+    border-radius: 0.4rem;
+    overflow: hidden;
+    background: var(--wa-card);
+    border: 1px solid #1d2a30;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.38);
+  }
+
+  .fake-chat-header {
+    display: grid;
+    grid-template-columns: auto auto 1fr auto;
+    gap: 0.78rem;
+    align-items: center;
+    background: var(--wa-header);
+    padding: 0.9rem 0.95rem;
+    border-bottom: 1px solid #1d2a30;
+  }
+
+  .back-link {
+    color: #d4dee2;
+    text-decoration: none;
+    font-size: 1.95rem;
+    line-height: 1;
+    padding: 0 0.2rem;
+  }
+
+  .back-link:hover {
+    color: #f2f7f9;
+  }
+
+  .avatar {
+    width: 2.8rem;
+    height: 2.8rem;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(150deg, #1f9a64, #39b278);
+    color: #052e1d;
+    font-weight: 700;
+  }
+
+  .heading-title {
+    margin: 0;
+    font-size: 1.9rem;
+    line-height: 1.05;
+    font-weight: 500;
+  }
+
+  .heading-subtitle {
+    margin-top: 0.16rem;
+    color: var(--wa-muted);
+    font-size: 1rem;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .ghost-ui {
+    opacity: 0.18;
+    color: #e4eaed;
+    cursor: not-allowed !important;
+    position: relative;
+  }
+
+  .ghost-ui::after {
+    content: attr(data-hint);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 0.35rem);
+    transform: translateX(-50%);
+    background: var(--wa-tooltip-bg);
+    color: #d8dee2;
+    border: 1px solid #304047;
+    border-radius: 0.42rem;
+    padding: 0.24rem 0.45rem;
+    font-size: 0.74rem;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.14s linear 0.5s;
+    z-index: 30;
+  }
+
+  .ghost-ui:hover::after {
+    opacity: 1;
+  }
+
+  .header-action-icon {
+    border: 0;
+    background: transparent;
+    color: #dbe4e8;
+    font-size: 1.35rem;
+    line-height: 1;
+    padding: 0.1rem 0.2rem;
+  }
+
+  .content {
+    padding: 1.1rem 1.2rem 1.8rem;
+  }
+
+  a {
+    color: var(--wa-green);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  a:hover {
+    color: #6cf09f;
+    text-decoration: underline;
+  }
+
+  .form-group {
+    margin-bottom: 1.1rem;
+  }
+
+  .form-group label {
+    display: block;
+    font-size: 0.9rem;
+    color: var(--wa-muted);
+    margin-bottom: 0.35rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .form-group select,
+  .form-group input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid #2d3b42;
+    border-radius: 0.45rem;
+    background: #0f1519;
+    color: var(--wa-text);
+    padding: 0.55rem 0.75rem;
+    font-size: 0.97rem;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  .form-group select:focus,
+  .form-group input[type="text"]:focus {
+    border-color: var(--wa-green);
+  }
+
+  .form-group select option {
+    background: #0f1519;
+  }
+
+  .form-group select:disabled,
+  .form-group input[type="text"]:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .send-row {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-top: 1.3rem;
+  }
+
+  .btn-send {
+    border: 1px solid #2d3b42;
+    border-radius: 0.45rem;
+    background: #0f3322;
+    color: var(--wa-green);
+    padding: 0.55rem 1.4rem;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+  }
+
+  .btn-send:hover:not(:disabled) {
+    border-color: var(--wa-green);
+    background: #0e4228;
+    color: #6cf09f;
+  }
+
+  .btn-send:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .status-msg {
+    font-size: 0.95rem;
+    min-height: 1.3em;
+  }
+
+  .status-msg.ok {
+    color: #6cf09f;
+  }
+
+  .status-msg.err {
+    color: #ff8f8f;
+  }
+
+  .status-msg.loading {
+    color: var(--wa-muted);
+  }
+
+  .chat-load-hint {
+    font-size: 0.85rem;
+    color: var(--wa-muted);
+    margin-top: 0.3rem;
+  }
+</style>
+
+<div class="shell">
+  <header class="fake-chat-header">
+    <a class="back-link" href=".">←</a>
+    <div class="avatar">✉️</div>
+    <div>
+      <h1 class="heading-title">Send test message</h1>
+      <div class="heading-subtitle" id="headerSubtitle">Select a chat and send</div>
+    </div>
+    <div class="header-actions">
+      <button
+        class="header-action-icon ghost-ui"
+        type="button"
+        data-hint="just looks good, nothing to do here"
+      >
+        🎥
+      </button>
+      <button
+        class="header-action-icon ghost-ui"
+        type="button"
+        data-hint="just looks good, nothing to do here"
+      >
+        ▾
+      </button>
+      <button
+        class="header-action-icon ghost-ui"
+        type="button"
+        data-hint="just looks good, nothing to do here"
+      >
+        ⋮
+      </button>
+    </div>
+  </header>
+
+  <div class="content">
+    <p><a href=".">Back</a></p>
+
+    <div class="form-group">
+      <label for="chatSelect">Channel</label>
+      <select id="chatSelect" disabled>
+        <option value="">Loading recent chats…</option>
+      </select>
+      <div class="chat-load-hint" id="chatLoadHint"></div>
+    </div>
+
+    <div class="form-group">
+      <label for="messageInput">Message</label>
+      <input type="text" id="messageInput" placeholder="Testing" maxlength="2000" />
+    </div>
+
+    <div class="send-row">
+      <button class="btn-send" id="sendBtn" disabled>Send</button>
+      <span class="status-msg" id="statusMsg"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const LS_CHAT_KEY = "send_test_chat_id";
+    const LS_CHAT_NAME_KEY = "send_test_chat_name";
+    const LS_MESSAGE_KEY = "send_test_message";
+
+    const chatSelect = document.getElementById("chatSelect");
+    const messageInput = document.getElementById("messageInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const statusMsg = document.getElementById("statusMsg");
+    const chatLoadHint = document.getElementById("chatLoadHint");
+    const headerSubtitle = document.getElementById("headerSubtitle");
+
+    const getBasePath = () => {
+      const pathname = location.pathname || "/";
+      const segments = pathname.split("/").filter(Boolean);
+      if (segments.length > 0 && segments[segments.length - 1] === "send-test") {
+        segments.pop();
+      }
+      return segments.length === 0 ? "/" : `/${segments.join("/")}/`;
+    };
+
+    const buildAppUrl = (relativePath) =>
+      `${getBasePath()}${String(relativePath || "").replace(/^\/+/, "")}`;
+
+    const setStatus = (text, kind) => {
+      statusMsg.textContent = text;
+      statusMsg.className = "status-msg" + (kind ? " " + kind : "");
+    };
+
+    const updateSendReady = () => {
+      const chatReady = chatSelect.value && chatSelect.value !== "";
+      sendBtn.disabled = !chatReady;
+    };
+
+    const persistSelections = () => {
+      try {
+        const selectedOption = chatSelect.options[chatSelect.selectedIndex];
+        localStorage.setItem(LS_CHAT_KEY, chatSelect.value);
+        localStorage.setItem(LS_CHAT_NAME_KEY, selectedOption ? selectedOption.textContent : "");
+        localStorage.setItem(LS_MESSAGE_KEY, messageInput.value);
+      } catch (_) {}
+    };
+
+    const restoreMessage = () => {
+      try {
+        const saved = localStorage.getItem(LS_MESSAGE_KEY);
+        if (saved !== null) {
+          messageInput.value = saved;
+        } else {
+          messageInput.value = "Testing";
+        }
+      } catch (_) {
+        messageInput.value = "Testing";
+      }
+    };
+
+    const loadChats = async () => {
+      chatLoadHint.textContent = "";
+      try {
+        const response = await fetch(buildAppUrl("api/v1/chats"));
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          const errText = body?.error || `HTTP ${response.status}`;
+          chatSelect.innerHTML = `<option value="">Failed to load chats: ${errText}</option>`;
+          chatLoadHint.textContent = errText;
+          return;
+        }
+        const data = await response.json();
+        const chats = Array.isArray(data?.chats) ? data.chats : [];
+
+        const recent = chats.slice(0, 30);
+
+        chatSelect.innerHTML = '<option value="">— select a channel —</option>';
+        for (const chat of recent) {
+          const opt = document.createElement("option");
+          opt.value = chat.id;
+          const typeTag = chat.isGroup ? " [group]" : "";
+          opt.textContent = `${chat.name || chat.id}${typeTag}`;
+          chatSelect.appendChild(opt);
+        }
+        chatSelect.disabled = false;
+
+        try {
+          const savedId = localStorage.getItem(LS_CHAT_KEY);
+          if (savedId) {
+            for (const opt of chatSelect.options) {
+              if (opt.value === savedId) {
+                chatSelect.value = savedId;
+                break;
+              }
+            }
+          }
+        } catch (_) {}
+
+        chatLoadHint.textContent = `Showing ${recent.length} most recent chat${recent.length !== 1 ? "s" : ""}`;
+        updateSendReady();
+      } catch (error) {
+        chatSelect.innerHTML = `<option value="">Error: ${error.message}</option>`;
+        chatLoadHint.textContent = error.message;
+      }
+    };
+
+    chatSelect.addEventListener("change", () => {
+      persistSelections();
+      updateSendReady();
+      const selectedOption = chatSelect.options[chatSelect.selectedIndex];
+      if (selectedOption && selectedOption.value) {
+        headerSubtitle.textContent = selectedOption.textContent;
+      } else {
+        headerSubtitle.textContent = "Select a chat and send";
+      }
+      setStatus("", "");
+    });
+
+    messageInput.addEventListener("input", () => {
+      persistSelections();
+    });
+
+    sendBtn.addEventListener("click", async () => {
+      const chatId = chatSelect.value;
+      const message = messageInput.value.trim() || "Testing";
+      if (!chatId) {
+        setStatus("Please select a channel first.", "err");
+        return;
+      }
+
+      sendBtn.disabled = true;
+      setStatus("Sending…", "loading");
+
+      try {
+        const response = await fetch(buildAppUrl("api/v1/send-test"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chatId, message }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data?.ok) {
+          setStatus("Sent ✓" + (data.messageId ? ` (${data.messageId.slice(-8)})` : ""), "ok");
+        } else {
+          setStatus("Error: " + (data?.error || `HTTP ${response.status}`), "err");
+        }
+      } catch (error) {
+        setStatus("Network error: " + error.message, "err");
+      } finally {
+        updateSendReady();
+      }
+    });
+
+    restoreMessage();
+    loadChats();
+  })();
+</script>
