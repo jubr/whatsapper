@@ -23,12 +23,23 @@
     "step": {
       "init": {
         "title": "Whatsapper options",
-        "description": "Update host and websocket settings shown in this integration entry.",
+        "description": "Update connection settings and heartbeat monitor configuration.",
         "data": {
           "host_port": "Host and port (optional, empty = auto-detect)",
-          "ws_path": "WebSocket path"
+          "ws_path": "WebSocket path",
+          "heartbeat_enabled": "Enable WhatsApp heartbeat",
+          "heartbeat_chat_name": "Heartbeat chat name",
+          "heartbeat_interval_minutes": "Heartbeat interval (minutes)",
+          "heartbeat_notify_targets": "Notify targets on status change (comma-separated service names, e.g. notify.mobile_app_phone)"
+        },
+        "data_description": {
+          "heartbeat_chat_name": "Exact name of the WhatsApp chat where heartbeat messages are sent.",
+          "heartbeat_notify_targets": "Comma-separated list of notify service names to call when connectivity state changes."
         }
       }
+    },
+    "error": {
+      "invalid_interval": "Interval must be a whole number of minutes (minimum 1)."
     }
   },
   "issues": {
