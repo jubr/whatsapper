@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - cursor/**
+      - more-wa
     tags:
       - "*"
   workflow_dispatch:
