@@ -69,6 +69,17 @@ const APP_VERSION = process.env.APP_BUILD_VERSION || require("../package.json").
 let integrationVersionFromWs = "unknown";
 let integrationVersionFromWsAt = null;
 let integrationVersionFromWsClientId = null;
+const normalizeConnectionState = (value) => {
+  const normalized =
+    typeof value === "string"
+      ? value
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, "_")
+      : "";
+  return normalized || "starting";
+};
+const toShortConnectionState = (value) => normalizeConnectionState(value).slice(0, 16);
 const isVersionMismatch = (addonVersion, integrationVersion) => {
   const addon = typeof addonVersion === "string" ? addonVersion.trim() : "";
   const integration = typeof integrationVersion === "string" ? integrationVersion.trim() : "";
@@ -84,18 +95,41 @@ const getUiVersions = () => {
     typeof integrationVersionFromWs === "string" && integrationVersionFromWs.trim()
       ? integrationVersionFromWs.trim()
       : "unknown";
+  const runtimeState = getRuntimeState();
   return {
     appName: runtimeIdentity.appName,
     appTitle: toTitleCaseName(runtimeIdentity.appName),
     appPort: runtimeIdentity.appPort,
     dirtyBuild: runtimeIdentity.dirtyBuild,
     devBuild: runtimeIdentity.devBuild ?? runtimeIdentity.dirtyBuild,
-    whatsappWebJsVersion: getRuntimeState().installedVersion || "unknown",
+    whatsappWebJsVersion: runtimeState.installedVersion || "unknown",
+    wwjsConnectionState: toShortConnectionState(runtimeState.connectionState || runtimeState.state),
+    wwjsInitialized: Boolean(runtimeState.initialized),
     appVersion: APP_VERSION,
     integrationVersion,
     integrationVersionMismatch: isVersionMismatch(APP_VERSION, integrationVersion),
     integrationVersionSource:
       integrationVersionFromWsAt && integrationVersionFromWsClientId ? "events-ws" : "unknown",
+  };
+};
+const getUiStatus = () => {
+  const versions = getUiVersions();
+  const qrAvailable = Boolean(getQr());
+  const initialized = Boolean(versions.wwjsInitialized);
+  const connectionState = versions.wwjsConnectionState || "starting";
+  const qrNeedsAttention = qrAvailable || !initialized;
+  const qrMeta = initialized && !qrAvailable ? "ok" : connectionState;
+  const qrSubtitle =
+    initialized && !qrAvailable
+      ? "Activate login if needed"
+      : `Waiting for WhatsApp (${connectionState})`;
+  return {
+    ...versions,
+    qrNeedsAttention,
+    qrMeta,
+    qrSubtitle,
+    qrDimmed: !qrNeedsAttention,
+    generatedAt: new Date().toISOString(),
   };
 };
 
@@ -602,10 +636,7 @@ fastify.addHook("onClose", (_instance, done) => {
 });
 
 fastify.get("/", function handler(_, reply) {
-  reply.view("root.ejs", {
-    ...getUiVersions(),
-    qrNeedsAttention: Boolean(getQr()) || !isInitialized(),
-  });
+  reply.view("root.ejs", getUiStatus());
 });
 
 fastify.get("/hotswap", function handler(_, reply) {
@@ -730,6 +761,10 @@ fastify.get("/api/v1/chats", async function handler(request, reply) {
 fastify.get("/api/v1/wwebjs/runtime", async function handler(_, reply) {
   await getStartupPromise();
   return reply.send(getRuntimeState());
+});
+
+fastify.get("/api/v1/ui/status", function handler(_, reply) {
+  return reply.send(getUiStatus());
 });
 
 fastify.get("/api/v1/wwebjs/refs", async function handler(request, reply) {

@@ -61,6 +61,7 @@ let receivedQrConsole = null;
 let receivedQrConsoleSingle = null;
 let receivedQrConsoleBlock = null;
 let clientInitialized = false;
+let currentConnectionState = "starting";
 let currentChoice = "built-in";
 let swapInProgress = false;
 let refsCache = { fetchedAt: 0, payload: null };
@@ -363,6 +364,7 @@ const bindClientEvents = (client) => {
 
   client.on("ready", () => {
     clientInitialized = true;
+    currentConnectionState = "ready";
     receivedQr = null;
     receivedQrConsole = null;
     receivedQrConsoleSingle = null;
@@ -373,6 +375,9 @@ const bindClientEvents = (client) => {
 
   client.on("disconnected", (reason) => {
     clientInitialized = false;
+    const normalizedReason =
+      typeof reason === "string" && reason.trim() ? reason.trim().toLowerCase() : "disconnected";
+    currentConnectionState = normalizedReason;
     receivedQr = null;
     receivedQrConsole = null;
     receivedQrConsoleSingle = null;
@@ -382,6 +387,8 @@ const bindClientEvents = (client) => {
   });
 
   client.on("change_state", (state) => {
+    currentConnectionState =
+      typeof state === "string" && state.trim() ? state.trim().toLowerCase() : "unknown";
     emitRuntimeLog("info", "Client state changed", { state });
     emitEvent("change_state", { state });
   });
@@ -401,6 +408,7 @@ const initializeClient = () => {
   const activeVersion = getInstalledVersion();
   emitRuntimeLog("info", "Initializing WhatsApp client", { whatsappWebJsVersion: activeVersion });
 
+  currentConnectionState = "starting";
   currentClient = createClient();
   bindClientEvents(currentClient);
   currentClient.initialize();
@@ -414,6 +422,7 @@ const destroyClient = async () => {
   const clientToDestroy = currentClient;
   currentClient = null;
   clientInitialized = false;
+  currentConnectionState = "starting";
   receivedQr = null;
   receivedQrConsole = null;
   receivedQrConsoleSingle = null;
@@ -493,6 +502,8 @@ const choiceToInstallSpec = (choiceObject) => {
 const getRuntimeState = () => ({
   swapping: swapInProgress,
   initialized: clientInitialized,
+  connectionState: currentConnectionState,
+  state: currentConnectionState,
   currentChoice,
   bundledDependencySpec: BUNDLED_DEP_SPEC,
   installedVersion: getInstalledVersion(),

@@ -5,8 +5,8 @@
  *
  * Every `intervalMinutes` it sends a "Heartbeat {ISO datetime}" message to a
  * configured WhatsApp chat, then sweeps that same chat to delete any
- * heartbeat messages older than 3 * intervalMinutes.  That keeps exactly
- * ~3 heartbeat messages visible at any time when the system is healthy.
+ * heartbeat messages older than 3 * intervalMinutes using "Delete for me"
+ * semantics to avoid visible delete markers.
  */
 
 const fs = require("fs").promises;
@@ -130,10 +130,12 @@ const sendHeartbeat = async () => {
     });
     for (const msg of toDelete) {
       try {
-        await msg.delete(true);
+        // Use "Delete for me" to avoid leaving a visible "message deleted" trace.
+        await msg.delete(false);
         log("info", "Heartbeat: deleted old message", {
           messageId: msg.id?._serialized,
           timestamp: new Date(Number(msg.timestamp) * 1000).toISOString(),
+          deleteMode: "for_me",
         });
       } catch (delErr) {
         log("warn", "Heartbeat: failed to delete old message", {
