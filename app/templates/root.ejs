@@ -599,14 +599,6 @@
       };
     };
 
-    const loadUiStatus = async () => {
-      const response = await fetch(`${basePath}api/v1/ui/status`, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`ui status ${response.status}`);
-      }
-      return response.json();
-    };
-
     const applyUiStatus = (status) => {
       if (!status || typeof status !== "object") return;
       renderRowStatus(document.querySelector('[data-ui-row="qr"]'), {
@@ -642,16 +634,36 @@
       });
     };
 
-    const refreshUiStatus = async () => {
-      try {
-        const status = await loadUiStatus();
-        applyUiStatus(status);
-      } catch (_) {
-        // Keep previous values on transient fetch errors.
-      }
+    const connectUiStatusWs = () => {
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      const wsUrl = new URL(`${basePath}api/v1/ui/status`, location.origin);
+      wsUrl.protocol = `${protocol}:`;
+      const socket = new WebSocket(wsUrl.toString());
+
+      socket.addEventListener("message", (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.type === "ui_status" && payload?.data && typeof payload.data === "object") {
+            applyUiStatus(payload.data);
+          }
+        } catch (_) {
+          // Ignore malformed frames.
+        }
+      });
+
+      socket.addEventListener("close", () => {
+        setTimeout(connectUiStatusWs, 2000);
+      });
+
+      socket.addEventListener("error", () => {
+        try {
+          socket.close();
+        } catch (_) {
+          // ignore
+        }
+      });
     };
 
-    refreshUiStatus();
-    setInterval(refreshUiStatus, 2000);
+    connectUiStatusWs();
   })();
 </script>

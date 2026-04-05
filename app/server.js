@@ -62,6 +62,7 @@ fastify.addHook("onResponse", (request, reply, done) => {
 
 const websocketSubscriptions = new Set();
 const hotswapWsSubscriptions = new Set();
+const uiStatusSubscriptions = new Set();
 const supportedWsEvents = new Set(WS_SUPPORTED_EVENTS);
 const isSocketOpen = (socket) => socket.readyState === socket.constructor.OPEN;
 const runtimeIdentity = getRuntimeIdentity();
@@ -243,6 +244,7 @@ const updateIntegrationVersionFromWs = (client, version, details = {}) => {
     source: "events-ws",
     ...details,
   });
+  broadcastUiStatus("integration_version_response");
   return true;
 };
 
@@ -684,8 +686,31 @@ const broadcastRuntimeLog = (entry) => {
   }
 };
 
+const shouldBroadcastUiStatusForEvent = (eventName) =>
+  eventName === "qr" ||
+  eventName === "ready" ||
+  eventName === "disconnected" ||
+  eventName === "change_state";
+
+const broadcastUiStatus = (reason = "update") => {
+  const payload = {
+    type: "ui_status",
+    reason,
+    timestamp: new Date().toISOString(),
+    data: getUiStatus(),
+  };
+  for (const client of uiStatusSubscriptions) {
+    if (!sendWsPayload(client, payload, { suppressTrafficLog: true })) {
+      uiStatusSubscriptions.delete(client);
+    }
+  }
+};
+
 const unsubscribeFromClientEvents = subscribeToEvents((envelope) => {
   broadcastEvent(envelope);
+  if (shouldBroadcastUiStatusForEvent(envelope.event)) {
+    broadcastUiStatus(`event:${envelope.event}`);
+  }
 });
 
 const unsubscribeFromRuntimeLogs = subscribeToRuntimeLogs((entry) => {
@@ -695,6 +720,7 @@ const unsubscribeFromRuntimeLogs = subscribeToRuntimeLogs((entry) => {
 fastify.addHook("onClose", (_instance, done) => {
   unsubscribeFromClientEvents();
   unsubscribeFromRuntimeLogs();
+  uiStatusSubscriptions.clear();
   done();
 });
 
@@ -826,10 +852,6 @@ fastify.get("/api/v1/wwebjs/runtime", async function handler(_, reply) {
   return reply.send(getRuntimeState());
 });
 
-fastify.get("/api/v1/ui/status", function handler(_, reply) {
-  return reply.send(getUiStatus());
-});
-
 fastify.post("/api/v1/ha/restart", async function handler(_, reply) {
   if (!canRestartHomeAssistant()) {
     reply.statusCode = 503;
@@ -874,6 +896,7 @@ fastify.post("/api/v1/wwebjs/hotswap", async function handler(request, reply) {
 
   try {
     const result = await swapToChoice(choice);
+    broadcastUiStatus("hotswap");
     return reply.send({ ok: true, result });
   } catch (error) {
     const message = String(error?.message || error);
@@ -931,6 +954,66 @@ fastify.post("/command/:type", async function handler(request, reply) {
 });
 
 fastify.after(() => {
+  fastify.get(
+    "/api/v1/ui/status",
+    { websocket: true },
+    function uiStatusWebSocket(socket, request) {
+      const client = registerWsClient({
+        channel: "ui",
+        socket,
+        request,
+      });
+      uiStatusSubscriptions.add(client);
+
+      sendWsPayload(client, {
+        type: "connected",
+        timestamp: new Date().toISOString(),
+        data: {
+          channel: "ui",
+        },
+      });
+      sendWsPayload(client, {
+        type: "ui_status",
+        reason: "connect",
+        timestamp: new Date().toISOString(),
+        data: getUiStatus(),
+      });
+
+      socket.on("message", (rawBuffer) => {
+        const rawText = rawBuffer.toString();
+        try {
+          const payload = JSON.parse(rawText);
+          markWsInbound(client, rawText, payload);
+          if (payload?.type === "ping") {
+            sendWsPayload(client, {
+              type: "pong",
+              timestamp: new Date().toISOString(),
+            });
+            return;
+          }
+          if (payload?.type === "ui_status_request") {
+            sendWsPayload(client, {
+              type: "ui_status",
+              reason: "request",
+              timestamp: new Date().toISOString(),
+              data: getUiStatus(),
+            });
+          }
+        } catch (_) {
+          markWsInbound(client, rawText);
+          // Ignore malformed messages for ui status socket.
+        }
+      });
+
+      const teardown = (reason) => {
+        uiStatusSubscriptions.delete(client);
+        unregisterWsClient(client, reason);
+      };
+      socket.on("close", () => teardown("close"));
+      socket.on("error", () => teardown("error"));
+    },
+  );
+
   fastify.get(
     "/api/v1/events/ws",
     { websocket: true },
