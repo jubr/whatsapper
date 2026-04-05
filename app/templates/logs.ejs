@@ -209,7 +209,44 @@
 
   .details {
     color: #8da0ab;
-    margin-left: 0.45rem;
+    margin-left: 0.2rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.28rem;
+  }
+
+  .details-sep {
+    color: #68808f;
+  }
+
+  .arg {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.04rem;
+    min-width: 0;
+  }
+
+  .arg-key {
+    color: #83c7ff;
+  }
+
+  .arg-sep {
+    color: #7e97a6;
+  }
+
+  .arg-value {
+    color: #d4dde2;
+  }
+
+  .arg-client .arg-key {
+    color: #b9a8ff;
+  }
+
+  .arg-client .arg-value {
+    color: #cabfff;
   }
 
   .hidden {
@@ -314,22 +351,52 @@
       return d.toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
     };
 
-    const formatDetails = (details) => {
-      if (!details || typeof details !== "object") {
+    const abbreviateClientId = (value) => {
+      const text = String(value || "").trim();
+      if (text.length <= 14) {
+        return text;
+      }
+      return `${text.slice(0, 6)}..${text.slice(-4)}`;
+    };
+
+    const stringifyDetailValue = (value) => {
+      if (value === null || value === undefined) {
         return "";
       }
-      const parts = [];
+      if (typeof value === "object") {
+        return "[complex]";
+      }
+      return String(value).replace(/\s+/g, " ").trim();
+    };
+
+    const buildDetailArgs = (details, { abbreviateClient = false } = {}) => {
+      if (!details || typeof details !== "object") {
+        return [];
+      }
+      const ordered = [];
+      let clientArg = null;
       Object.entries(details).forEach(([key, value]) => {
-        if (value === null || value === undefined) return;
-        if (key === "scope" || key === "topic") return;
-        if (typeof value === "object") {
-          parts.push(`${key}=[complex]`);
-        } else {
-          const text = String(value).replace(/\s+/g, " ").trim();
-          if (text) parts.push(`${key}=${text}`);
+        if (key === "scope" || key === "topic") {
+          return;
         }
+        const rendered = stringifyDetailValue(value);
+        if (!rendered) {
+          return;
+        }
+        if (key === "clientId") {
+          clientArg = {
+            key,
+            value: abbreviateClient ? abbreviateClientId(rendered) : rendered,
+          };
+          return;
+        }
+        ordered.push({ key, value: rendered });
       });
-      return parts.join(" ");
+      // Keep clientId as the last argument for readability.
+      if (clientArg) {
+        ordered.push(clientArg);
+      }
+      return ordered;
     };
 
     const normalizeSearchTerms = (query) => {
@@ -353,7 +420,7 @@
 
     const makeSearchText = (normalized) => {
       const topic = normalized.topic || "";
-      const details = normalized.details || "";
+      const details = normalized.detailsSearch || "";
       return `${normalized.message} ${details} ${topic} ${normalized.category} ${normalized.levelCode}`.toLowerCase();
     };
 
@@ -401,7 +468,32 @@
 
       const details = document.createElement("span");
       details.className = "details";
-      details.textContent = normalized.details ? `| ${normalized.details}` : "";
+      if (Array.isArray(normalized.detailsArgs) && normalized.detailsArgs.length > 0) {
+        const sep = document.createElement("span");
+        sep.className = "details-sep";
+        sep.textContent = "|";
+        details.appendChild(sep);
+        normalized.detailsArgs.forEach((arg) => {
+          const argWrap = document.createElement("span");
+          argWrap.className = "arg";
+          if (arg.key === "clientId") {
+            argWrap.classList.add("arg-client");
+          }
+          const key = document.createElement("span");
+          key.className = "arg-key";
+          key.textContent = arg.key;
+          const keySep = document.createElement("span");
+          keySep.className = "arg-sep";
+          keySep.textContent = ":";
+          const value = document.createElement("span");
+          value.className = "arg-value";
+          value.textContent = arg.value;
+          argWrap.appendChild(key);
+          argWrap.appendChild(keySep);
+          argWrap.appendChild(value);
+          details.appendChild(argWrap);
+        });
+      }
 
       row.appendChild(ts);
       row.appendChild(lvl);
@@ -429,7 +521,10 @@
         category: detectCategory(entry),
         topic: String(entry?.details?.topic || ""),
         message: String(entry?.message || "log"),
-        details: formatDetails(entry?.details),
+        detailsArgs: buildDetailArgs(entry?.details, { abbreviateClient: true }),
+        detailsSearch: buildDetailArgs(entry?.details, { abbreviateClient: false })
+          .map((arg) => `${arg.key}:${arg.value}`)
+          .join(" "),
       };
       entries.push(normalized);
       const row = renderRow(normalized);
