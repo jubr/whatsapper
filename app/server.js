@@ -73,6 +73,29 @@ let integrationVersionFromWsAt = null;
 let integrationVersionFromWsClientId = null;
 const getSupervisorToken = () => String(process.env.SUPERVISOR_TOKEN || "").trim();
 const canRestartHomeAssistant = () => Boolean(getSupervisorToken());
+const checkSupervisorTokenValidity = async () => {
+  const token = getSupervisorToken();
+  if (!token) {
+    return { hasToken: false, valid: false, status: "missing" };
+  }
+  try {
+    const response = await fetch(`${SUPERVISOR_BASE_URL}/supervisor/info`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (response.status === 200) {
+      return { hasToken: true, valid: true, status: "valid" };
+    }
+    if (response.status === 401 || response.status === 403) {
+      return { hasToken: true, valid: false, status: "invalid" };
+    }
+    return { hasToken: true, valid: false, status: `http_${response.status}` };
+  } catch (_) {
+    return { hasToken: true, valid: false, status: "unreachable" };
+  }
+};
 const normalizeConnectionState = (value) => {
   const normalized =
     typeof value === "string"
@@ -1287,6 +1310,17 @@ fastify.listen({ port: runtimeIdentity.appPort, host: "0.0.0.0" }, (err) => {
     host: "0.0.0.0",
     port: runtimeIdentity.appPort,
   });
+  checkSupervisorTokenValidity()
+    .then((tokenCheck) => {
+      logServer(tokenCheck.valid ? "info" : "warn", "Supervisor token status", {
+        tokenValidity: tokenCheck.status,
+      });
+    })
+    .catch((tokenErr) => {
+      logServer("warn", "Supervisor token status check failed", {
+        error: String(tokenErr?.message || tokenErr),
+      });
+    });
 
   heartbeat.init({
     getClient: ensureActiveClient,
