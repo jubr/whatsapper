@@ -310,7 +310,7 @@ const registerWsClient = ({ channel, socket, request, selectedEvents = null }) =
     wsStats.runtimeConnectionsAccepted += 1;
   }
 
-  logServer("info", "WebSocket connected", {
+  logServer("info", "Connected", {
     channel: client.channel,
     clientId: client.id,
     remoteAddress: client.remoteAddress || "-",
@@ -330,7 +330,7 @@ const unregisterWsClient = (client, reason = "unknown") => {
   }
 
   wsStats.totalConnectionsClosed += 1;
-  logServer("info", "WebSocket disconnected", {
+  logServer("info", "Disconnected", {
     channel: client.channel,
     clientId: client.id,
     reason,
@@ -409,7 +409,7 @@ const sendWsPayload = (client, payload, options = {}) => {
     }
     return true;
   } catch (error) {
-    logServer("warn", "Failed to send websocket payload", {
+    logServer("warn", "Send payload failed", {
       channel: client.channel,
       clientId: client.id,
       error: String(error?.message || error),
