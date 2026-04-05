@@ -1,147 +1,146 @@
 <style>
   :root {
     color-scheme: dark;
-    --wa-bg: #0b141a;
-    --wa-header: #0a1014;
-    --wa-card: #111b21;
-    --wa-text: #e9edef;
-    --wa-muted: #8696a0;
-    --wa-green: #25d366;
-    --wa-tooltip-bg: rgba(15, 20, 23, 0.96);
+    --bg: #0b141a;
+    --header: #0a1014;
+    --panel: #111b21;
+    --line: #1d2a30;
+    --line-2: #2b3a41;
+    --txt: #e9edef;
+    --muted: #8696a0;
+    --ok: #8ff0ad;
+    --warn: #ffd58a;
+    --err: #ff9ea1;
+    --dbg: #8ed8ff;
+    --trc: #bb9cff;
+    --http: #6cd6ff;
+    --ws: #ffb36b;
+    --hb: #9ff7a7;
+    --chip: #162129;
+    --chip-on: #1f9a64;
   }
 
   body {
     margin: 0;
-    background: var(--wa-bg);
-    color: var(--wa-text);
+    background: var(--bg);
+    color: var(--txt);
     font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
 
   .shell {
-    max-width: 78rem;
-    margin: 0.9rem auto;
-    border-radius: 0.4rem;
-    overflow: hidden;
-    background: var(--wa-card);
-    border: 1px solid #1d2a30;
-    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.38);
+    width: 100vw;
+    height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    background: var(--panel);
   }
 
-  .fake-chat-header {
+  .header {
     display: grid;
-    grid-template-columns: auto auto 1fr auto;
-    gap: 0.78rem;
+    grid-template-columns: auto 1fr auto auto;
+    gap: 0.55rem;
     align-items: center;
-    background: var(--wa-header);
-    padding: 0.9rem 0.95rem;
-    border-bottom: 1px solid #1d2a30;
+    background: var(--header);
+    border-bottom: 1px solid var(--line);
+    padding: 0.55rem 0.65rem;
+    position: sticky;
+    top: 0;
+    z-index: 20;
   }
 
   .back-link {
     color: #d4dee2;
     text-decoration: none;
-    font-size: 1.95rem;
+    font-size: 1.5rem;
     line-height: 1;
     padding: 0 0.2rem;
   }
 
-  .back-link:hover {
-    color: #f2f7f9;
+  .title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
   }
 
-  .avatar {
-    width: 2.8rem;
-    height: 2.8rem;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(150deg, #1f9a64, #39b278);
-    color: #052e1d;
-    font-weight: 700;
+  .meta {
+    color: var(--muted);
+    font-size: 0.8rem;
+    white-space: nowrap;
   }
 
-  .heading-title {
-    margin: 0;
-    font-size: 1.9rem;
-    line-height: 1.05;
-    font-weight: 500;
-  }
-
-  .heading-subtitle {
-    margin-top: 0.16rem;
-    color: var(--wa-muted);
+  .filter-toggle {
+    border: 1px solid var(--line-2);
+    background: #0f161b;
+    color: #dce4e8;
+    border-radius: 0.35rem;
+    height: 1.9rem;
+    min-width: 2.1rem;
+    cursor: pointer;
     font-size: 1rem;
   }
 
-  .header-actions {
-    display: flex;
+  .filters {
+    border-bottom: 1px solid var(--line);
+    padding: 0.45rem 0.55rem;
+    background: #0e171d;
+    display: none;
+    gap: 0.6rem;
     align-items: center;
-    gap: 0.4rem;
+    flex-wrap: wrap;
   }
 
-  .ghost-ui {
-    opacity: 0.18;
-    color: #e4eaed;
-    cursor: not-allowed !important;
-    position: relative;
+  .filters.open {
+    display: flex;
   }
 
-  .ghost-ui::after {
-    content: attr(data-hint);
-    position: absolute;
-    left: 50%;
-    bottom: calc(100% + 0.35rem);
-    transform: translateX(-50%);
-    background: var(--wa-tooltip-bg);
-    color: #d8dee2;
-    border: 1px solid #304047;
-    border-radius: 0.42rem;
-    padding: 0.24rem 0.45rem;
-    font-size: 0.74rem;
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.14s linear 0.5s;
-    z-index: 30;
+  .group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
   }
 
-  .ghost-ui:hover::after {
-    opacity: 1;
+  .group-label {
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-right: 0.15rem;
   }
 
-  .header-action-icon {
-    border: 0;
-    background: transparent;
-    color: #dbe4e8;
-    font-size: 1.35rem;
-    line-height: 1;
-    padding: 0.1rem 0.2rem;
+  .chip {
+    border: 1px solid var(--line-2);
+    background: var(--chip);
+    color: #cbd5db;
+    border-radius: 999px;
+    font-size: 0.73rem;
+    padding: 0.12rem 0.5rem;
+    cursor: pointer;
+    user-select: none;
   }
 
-  .content {
-    padding: 1.1rem 1.2rem 1.3rem;
+  .chip.on {
+    background: rgba(31, 154, 100, 0.28);
+    border-color: #2f8f66;
+    color: #9af8cc;
   }
 
-  a {
-    color: var(--wa-green);
-    text-decoration: none;
-    font-weight: 600;
+  .search {
+    border: 1px solid var(--line-2);
+    background: #0f161b;
+    color: var(--txt);
+    border-radius: 0.35rem;
+    padding: 0.28rem 0.45rem;
+    min-width: 18rem;
+    font-size: 0.78rem;
   }
 
-  a:hover {
-    color: #6cf09f;
-    text-decoration: underline;
+  .search::placeholder {
+    color: #72828c;
   }
 
   .log-box {
-    border: 1px solid #2d3b42;
-    padding: 0.75rem;
-    background: #0f1519;
-    color: #d7e5dc;
-    height: 34rem;
-    overflow-y: auto;
-    white-space: pre-wrap;
+    margin: 0;
+    padding: 0.2rem 0.25rem;
+    overflow: auto;
     font-family:
       ui-monospace,
       SFMono-Regular,
@@ -151,54 +150,129 @@
       "Liberation Mono",
       "Courier New",
       monospace;
-    border-radius: 0.55rem;
+    font-size: 12px;
+    line-height: 1.25;
+  }
+
+  .log-row {
+    display: grid;
+    grid-template-columns: auto auto auto auto auto minmax(0, 1fr);
+    gap: 0.38rem;
+    align-items: baseline;
+    padding: 0.08rem 0.2rem;
+    border-radius: 0.2rem;
+    white-space: nowrap;
+  }
+
+  .log-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .ts {
+    color: #97a7b1;
+  }
+
+  .lvl {
+    font-weight: 700;
+    width: 0.9rem;
+    text-align: center;
+  }
+
+  .lvl-I { color: var(--ok); }
+  .lvl-W { color: var(--warn); }
+  .lvl-E { color: var(--err); }
+  .lvl-D { color: var(--dbg); }
+  .lvl-T { color: var(--trc); }
+
+  .cat {
+    color: #9eb0ba;
+    text-transform: uppercase;
+    font-size: 10px;
+  }
+
+  .cat-http { color: var(--http); }
+  .cat-ws { color: var(--ws); }
+  .cat-heartbeat { color: var(--hb); }
+
+  .topic {
+    color: #9ca9ff;
+    max-width: 18rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .msg {
+    color: #d9e2e7;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .details {
+    color: #8da0ab;
+    margin-left: 0.45rem;
+  }
+
+  .hidden {
+    display: none !important;
   }
 </style>
 
 <div class="shell">
-  <header class="fake-chat-header">
-    <a class="back-link" href=".">←</a>
-    <div class="avatar">🪵</div>
-    <div>
-      <h1 class="heading-title">Logs</h1>
-      <div class="heading-subtitle">3 online</div>
-    </div>
-    <div class="header-actions">
-      <button
-        class="header-action-icon ghost-ui"
-        type="button"
-        data-hint="just looks good, nothing to do here"
-      >
-        🎥
-      </button>
-      <button
-        class="header-action-icon ghost-ui"
-        type="button"
-        data-hint="just looks good, nothing to do here"
-      >
-        ▾
-      </button>
-      <button
-        class="header-action-icon ghost-ui"
-        type="button"
-        data-hint="just looks good, nothing to do here"
-      >
-        ⋮
-      </button>
-    </div>
+  <header class="header">
+    <a class="back-link" data-app-route="" href=".">←</a>
+    <div class="title">Logs</div>
+    <div class="meta" id="metaText">connecting...</div>
+    <button id="filterToggle" class="filter-toggle" type="button" title="Toggle filters">⛃</button>
   </header>
 
-  <div class="content">
-    <p><a data-app-route="" href=".">Back</a></p>
-    <div id="logBox" class="log-box"></div>
+  <div id="filters" class="filters">
+    <div class="group">
+      <span class="group-label">category</span>
+      <button class="chip on" data-filter-cat="http" type="button">http</button>
+      <button class="chip on" data-filter-cat="ws" type="button">ws</button>
+      <button class="chip on" data-filter-cat="heartbeat" type="button">heartbeat</button>
+    </div>
+    <div class="group">
+      <span class="group-label">level</span>
+      <button class="chip on" data-filter-level="E" type="button">E</button>
+      <button class="chip on" data-filter-level="W" type="button">W</button>
+      <button class="chip on" data-filter-level="I" type="button">I</button>
+      <button class="chip on" data-filter-level="D" type="button">D</button>
+      <button class="chip on" data-filter-level="T" type="button">T</button>
+    </div>
+    <div class="group">
+      <span class="group-label">search</span>
+      <input
+        id="searchInput"
+        class="search"
+        type="text"
+        placeholder="AND terms, use -negativeterm"
+      />
+    </div>
   </div>
+
+  <div id="logBox" class="log-box"></div>
 </div>
 
 <script>
   (function () {
     const logBox = document.getElementById("logBox");
+    const metaText = document.getElementById("metaText");
+    const filtersEl = document.getElementById("filters");
+    const filterToggle = document.getElementById("filterToggle");
+    const searchInput = document.getElementById("searchInput");
+    const catChips = Array.from(document.querySelectorAll("[data-filter-cat]"));
+    const levelChips = Array.from(document.querySelectorAll("[data-filter-level]"));
     let runtimeWs = null;
     let hasRenderedSnapshotLogs = false;
+    const entries = [];
+    const MAX_ROWS = 2000;
+    const state = {
+      cat: new Set(["http", "ws", "heartbeat"]),
+      level: new Set(["E", "W", "I", "D", "T"]),
+      searchInclude: [],
+      searchExclude: [],
+    };
 
     const getBasePath = () => {
       const pathname = location.pathname || "/";
@@ -212,10 +286,32 @@
     const buildAppUrl = (relativePath) =>
       `${getBasePath()}${String(relativePath || "").replace(/^\/+/, "")}`;
 
-    const toDateString = (value) => {
-      if (!value) return "n/a";
-      const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? value : date.toISOString();
+    const levelToCode = (rawLevel) => {
+      const normalized = String(rawLevel || "info").trim().toLowerCase();
+      if (normalized.startsWith("err")) return "E";
+      if (normalized.startsWith("warn")) return "W";
+      if (normalized.startsWith("debug")) return "D";
+      if (normalized.startsWith("trace")) return "T";
+      return "I";
+    };
+
+    const detectCategory = (entry) => {
+      const scope = String(entry?.details?.scope || "").toLowerCase();
+      const msg = String(entry?.message || "").toLowerCase();
+      if (scope === "heartbeat" || msg.includes("heartbeat")) return "heartbeat";
+      if (msg.includes("http request")) return "http";
+      if (msg.includes("websocket") || msg.includes("rpc")) return "ws";
+      if (scope === "server") {
+        if (entry?.details?.method || entry?.details?.path) return "http";
+        if (entry?.details?.channel || entry?.details?.topic) return "ws";
+      }
+      return "ws";
+    };
+
+    const formatTimeShort = (iso) => {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "??:??:??";
+      return d.toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
     };
 
     const formatDetails = (details) => {
@@ -224,45 +320,173 @@
       }
       const parts = [];
       Object.entries(details).forEach(([key, value]) => {
-        if (value === null || value === undefined) {
-          return;
-        }
+        if (value === null || value === undefined) return;
+        if (key === "scope" || key === "topic") return;
         if (typeof value === "object") {
           parts.push(`${key}=[complex]`);
-          return;
-        }
-        const text = String(value).replace(/\s+/g, " ").trim();
-        if (text) {
-          parts.push(`${key}=${text}`);
+        } else {
+          const text = String(value).replace(/\s+/g, " ").trim();
+          if (text) parts.push(`${key}=${text}`);
         }
       });
       return parts.join(" ");
     };
 
-    const appendLogLine = (line, level) => {
-      const el = document.createElement("div");
-      if (level === "error") {
-        el.style.color = "#ff8f8f";
-      } else if (level === "warn") {
-        el.style.color = "#f8d66d";
-      } else if (level === "info") {
-        el.style.color = "#86efac";
-      } else {
-        el.style.color = "#ddd";
-      }
-      el.textContent = line;
-      logBox.appendChild(el);
-      logBox.scrollTop = logBox.scrollHeight;
+    const normalizeSearchTerms = (query) => {
+      const include = [];
+      const exclude = [];
+      String(query || "")
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean)
+        .forEach((term) => {
+          if (term.startsWith("-") && term.length > 1) {
+            exclude.push(term.slice(1));
+          } else {
+            include.push(term);
+          }
+        });
+      state.searchInclude = include;
+      state.searchExclude = exclude;
     };
 
-    const appendStructuredLog = (entry) => {
-      const stamp = toDateString(entry.timestamp);
-      const level = entry.level || "info";
-      const detailsText = formatDetails(entry.details);
-      const message = entry.message || "log";
-      const suffix = detailsText ? ` | ${detailsText}` : "";
-      appendLogLine(`[${stamp}] [${level}] ${message}${suffix}`, level);
+    const makeSearchText = (normalized) => {
+      const topic = normalized.topic || "";
+      const details = normalized.details || "";
+      return `${normalized.message} ${details} ${topic} ${normalized.category} ${normalized.levelCode}`.toLowerCase();
     };
+
+    const passesFilter = (normalized) => {
+      if (!state.cat.has(normalized.category)) return false;
+      if (!state.level.has(normalized.levelCode)) return false;
+      const haystack = makeSearchText(normalized);
+      for (const token of state.searchInclude) {
+        if (!haystack.includes(token)) return false;
+      }
+      for (const token of state.searchExclude) {
+        if (haystack.includes(token)) return false;
+      }
+      return true;
+    };
+
+    const renderRow = (normalized) => {
+      const row = document.createElement("div");
+      row.className = "log-row";
+      if (!passesFilter(normalized)) {
+        row.classList.add("hidden");
+      }
+
+      const ts = document.createElement("span");
+      ts.className = "ts";
+      ts.textContent = formatTimeShort(normalized.timestamp);
+      ts.title = normalized.timestamp;
+
+      const lvl = document.createElement("span");
+      lvl.className = `lvl lvl-${normalized.levelCode}`;
+      lvl.textContent = normalized.levelCode;
+
+      const cat = document.createElement("span");
+      cat.className = `cat cat-${normalized.category}`;
+      cat.textContent = normalized.category;
+
+      const topic = document.createElement("span");
+      topic.className = "topic";
+      topic.textContent = normalized.topic || "-";
+      topic.title = normalized.topic || "";
+
+      const msg = document.createElement("span");
+      msg.className = "msg";
+      msg.textContent = normalized.message;
+
+      const details = document.createElement("span");
+      details.className = "details";
+      details.textContent = normalized.details ? `| ${normalized.details}` : "";
+
+      row.appendChild(ts);
+      row.appendChild(lvl);
+      row.appendChild(cat);
+      row.appendChild(topic);
+      row.appendChild(msg);
+      row.appendChild(details);
+      row.__normalized = normalized;
+      return row;
+    };
+
+    const rerenderVisibility = () => {
+      const rows = Array.from(logBox.children);
+      rows.forEach((row) => {
+        const visible = passesFilter(row.__normalized);
+        row.classList.toggle("hidden", !visible);
+      });
+      metaText.textContent = `${entries.length} rows`;
+    };
+
+    const appendEntry = (entry) => {
+      const normalized = {
+        timestamp: String(entry?.timestamp || new Date().toISOString()),
+        levelCode: levelToCode(entry?.level),
+        category: detectCategory(entry),
+        topic: String(entry?.details?.topic || ""),
+        message: String(entry?.message || "log"),
+        details: formatDetails(entry?.details),
+      };
+      entries.push(normalized);
+      const row = renderRow(normalized);
+      logBox.appendChild(row);
+      while (entries.length > MAX_ROWS) {
+        entries.shift();
+        if (logBox.firstChild) logBox.removeChild(logBox.firstChild);
+      }
+      logBox.scrollTop = logBox.scrollHeight;
+      metaText.textContent = `${entries.length} rows`;
+    };
+
+    const resetEntries = (list) => {
+      entries.length = 0;
+      logBox.innerHTML = "";
+      (Array.isArray(list) ? list : []).forEach((entry) => appendEntry(entry));
+      rerenderVisibility();
+    };
+
+    filterToggle.addEventListener("click", () => {
+      filtersEl.classList.toggle("open");
+    });
+
+    catChips.forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const cat = chip.getAttribute("data-filter-cat");
+        if (!cat) return;
+        if (state.cat.has(cat)) {
+          state.cat.delete(cat);
+          chip.classList.remove("on");
+        } else {
+          state.cat.add(cat);
+          chip.classList.add("on");
+        }
+        rerenderVisibility();
+      });
+    });
+
+    levelChips.forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const lvl = chip.getAttribute("data-filter-level");
+        if (!lvl) return;
+        if (state.level.has(lvl)) {
+          state.level.delete(lvl);
+          chip.classList.remove("on");
+        } else {
+          state.level.add(lvl);
+          chip.classList.add("on");
+        }
+        rerenderVisibility();
+      });
+    });
+
+    searchInput.addEventListener("input", () => {
+      normalizeSearchTerms(searchInput.value);
+      rerenderVisibility();
+    });
 
     const openRuntimeSocket = () => {
       const protocol = location.protocol === "https:" ? "wss" : "ws";
@@ -271,16 +495,16 @@
       runtimeWs = new WebSocket(runtimeWsUrl.toString());
 
       runtimeWs.addEventListener("open", () => {
-        appendLogLine("[ws] Connected to runtime log stream", "info");
+        metaText.textContent = `${entries.length} rows · live`;
       });
 
       runtimeWs.addEventListener("close", () => {
-        appendLogLine("[ws] Runtime log stream disconnected. Reconnecting...", "warn");
+        metaText.textContent = `${entries.length} rows · reconnecting`;
         setTimeout(openRuntimeSocket, 2000);
       });
 
       runtimeWs.addEventListener("error", () => {
-        appendLogLine("[ws] Runtime log stream error", "error");
+        metaText.textContent = `${entries.length} rows · ws error`;
       });
 
       runtimeWs.addEventListener("message", (event) => {
@@ -288,21 +512,25 @@
         try {
           payload = JSON.parse(event.data);
         } catch (_) {
-          appendLogLine(`[ws] ${event.data}`, "info");
+          appendEntry({
+            timestamp: new Date().toISOString(),
+            level: "warn",
+            message: "Malformed websocket payload",
+            details: { raw: String(event.data).slice(0, 400) },
+          });
           return;
         }
 
         if (payload.type === "snapshot") {
           if (!hasRenderedSnapshotLogs && Array.isArray(payload.logs)) {
-            logBox.innerHTML = "";
-            payload.logs.forEach((entry) => appendStructuredLog(entry));
+            resetEntries(payload.logs);
             hasRenderedSnapshotLogs = true;
           }
           return;
         }
 
         if (payload.type === "log") {
-          appendStructuredLog(payload);
+          appendEntry(payload);
         }
       });
     };

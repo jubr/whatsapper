@@ -139,6 +139,14 @@
     opacity: 0.78;
   }
 
+  .chat-row.actionable-row {
+    cursor: pointer;
+  }
+
+  .chat-row.actionable-row:hover {
+    background: rgba(17, 27, 33, 0.65);
+  }
+
   .chat-row.inactive-row {
     opacity: 0.72;
   }
@@ -287,6 +295,17 @@
       : typeof appName !== "undefined" && appName
         ? appName
         : "Whatsapper";
+  const uiStatus = {
+    appTitle: titleText,
+    whatsappWebJsVersion: whatsappWebJsVersion || "unknown",
+    integrationVersion: integrationVersion || "unknown",
+    appVersion: appVersion || "unknown",
+    integrationVersionMismatch: Boolean(integrationVersionMismatch),
+    qrMeta: qrMeta || (qrNeedsAttention ? "now" : "ok"),
+    qrNeedsAttention: Boolean(qrNeedsAttention),
+    qrSubtitle: qrSubtitle || "Activate login if needed",
+    generatedAt: generatedAt || "",
+  };
   const rows = [
     {
       icon: "💬",
@@ -323,32 +342,32 @@
     {
       icon: "🔐",
       title: "QR",
-      subtitle: "Activate login if needed",
+      subtitle: uiStatus.qrSubtitle,
       route: "qr",
-      meta: qrNeedsAttention ? "now" : "ok",
-      attention: Boolean(qrNeedsAttention),
-      dimmed: !qrNeedsAttention,
+      meta: uiStatus.qrMeta,
+      attention: Boolean(uiStatus.qrNeedsAttention),
+      dimmed: !uiStatus.qrNeedsAttention,
     },
     {
       icon: "🧩",
       title: "Whatsapp-web-js version",
       subtitle: "Hotswap runtime version",
       route: "hotswap",
-      meta: whatsappWebJsVersion || "unknown",
+      meta: uiStatus.whatsappWebJsVersion,
       attention: false,
       pinned: true,
     },
     {
       icon: "📦",
       title: `${titleText} integration version`,
-      subtitle: integrationVersionMismatch
+      subtitle: uiStatus.integrationVersionMismatch
         ? "Restart Home Assistant core to update..."
         : "Home Assistant custom component",
       route: null,
-      meta: integrationVersion || "unknown",
-      attention: Boolean(integrationVersionMismatch),
-      dimmed: Boolean(integrationVersionMismatch),
-      pinned: !integrationVersionMismatch,
+      meta: uiStatus.integrationVersion,
+      attention: uiStatus.integrationVersionMismatch,
+      dimmed: uiStatus.integrationVersionMismatch,
+      pinned: !uiStatus.integrationVersionMismatch,
       softPinned: true,
     },
     {
@@ -356,7 +375,7 @@
       title: "Whatsapper app version",
       subtitle: devBuild ? "Dev build" : "Release build",
       route: null,
-      meta: appVersion || "unknown",
+      meta: uiStatus.appVersion,
       attention: false,
       pinned: true,
     },
@@ -397,21 +416,27 @@
 
   <ul class="chat-list">
     <% rows.forEach((item) => { %>
-      <li class="chat-row <%= item.pinned ? "version-row" : "" %> <%= item.softPinned ? "soft-version-row" : "" %> <%= item.dimmed ? "inactive-row" : "" %>">
+      <li
+        class="chat-row <%= item.pinned ? "version-row" : "" %> <%= item.softPinned ? "soft-version-row" : "" %> <%= item.dimmed ? "inactive-row" : "" %>"
+        <% if (item.title === "QR") { %>data-ui-row="qr"<% } %>
+        <% if (item.title === "Whatsapp-web-js version") { %>data-ui-row="wwjsVersion"<% } %>
+        <% if (item.title.indexOf("integration version") !== -1) { %>data-ui-row="integrationVersion"<% } %>
+        <% if (item.title === "Whatsapper app version") { %>data-ui-row="appVersion"<% } %>
+      >
         <% if (item.route) { %>
           <a class="chat-link" data-app-route="<%= item.route %>" href="<%= item.route %>">
             <div class="chat-avatar"><%= item.icon %></div>
             <div class="chat-main">
               <h3 class="chat-title"><%= item.title %></h3>
-              <div class="chat-preview"><%= item.subtitle %></div>
+              <div class="chat-preview" data-ui-subtitle><%= item.subtitle %></div>
             </div>
             <div class="chat-meta">
-              <div class="chat-time <%= item.attention ? "attention" : "" %>"><%= item.meta %></div>
+              <div class="chat-time <%= item.attention ? "attention" : "" %>" data-ui-meta><%= item.meta %></div>
               <% if (item.attention) { %>
-                <span class="unread-badge"></span>
+                <span class="unread-badge" data-ui-attention-dot></span>
               <% } %>
               <% if (item.pinned) { %>
-                <span class="pin">📌</span>
+                <span class="pin" data-ui-pin>📌</span>
               <% } %>
             </div>
           </a>
@@ -419,15 +444,15 @@
           <div class="chat-avatar"><%= item.icon %></div>
           <div class="chat-main">
             <h3 class="chat-title"><%= item.title %></h3>
-            <div class="chat-preview"><%= item.subtitle %></div>
+            <div class="chat-preview" data-ui-subtitle><%= item.subtitle %></div>
           </div>
           <div class="chat-meta">
-            <div class="chat-time <%= item.attention ? "attention" : "" %>"><%= item.meta %></div>
+            <div class="chat-time <%= item.attention ? "attention" : "" %>" data-ui-meta><%= item.meta %></div>
             <% if (item.attention) { %>
-              <span class="unread-badge"></span>
+              <span class="unread-badge" data-ui-attention-dot></span>
             <% } %>
             <% if (item.pinned) { %>
-              <span class="pin">📌</span>
+              <span class="pin" data-ui-pin>📌</span>
             <% } %>
           </div>
         <% } %>
@@ -479,5 +504,166 @@
         event.stopPropagation();
       });
     });
+
+    const renderRowStatus = (row, { meta, subtitle, attention, pinned, dimmed, softPinned }) => {
+      if (!row) return;
+      const metaEl = row.querySelector("[data-ui-meta]");
+      const subtitleEl = row.querySelector("[data-ui-subtitle]");
+      if (metaEl && typeof meta === "string") {
+        metaEl.textContent = meta;
+      }
+      if (subtitleEl && typeof subtitle === "string") {
+        subtitleEl.textContent = subtitle;
+      }
+      if (metaEl) {
+        metaEl.classList.toggle("attention", Boolean(attention));
+      }
+      row.classList.toggle("inactive-row", Boolean(dimmed));
+      row.classList.toggle("soft-version-row", Boolean(softPinned));
+
+      let dot = row.querySelector("[data-ui-attention-dot]");
+      if (attention && !dot) {
+        dot = document.createElement("span");
+        dot.className = "unread-badge";
+        dot.setAttribute("data-ui-attention-dot", "");
+        const metaWrap = row.querySelector(".chat-meta");
+        const pin = row.querySelector("[data-ui-pin]");
+        if (metaWrap) {
+          if (pin) {
+            metaWrap.insertBefore(dot, pin);
+          } else {
+            metaWrap.appendChild(dot);
+          }
+        }
+      } else if (!attention && dot) {
+        dot.remove();
+      }
+
+      let pin = row.querySelector("[data-ui-pin]");
+      if (pinned && !pin) {
+        pin = document.createElement("span");
+        pin.className = "pin";
+        pin.textContent = "📌";
+        pin.setAttribute("data-ui-pin", "");
+        const metaWrap = row.querySelector(".chat-meta");
+        if (metaWrap) {
+          metaWrap.appendChild(pin);
+        }
+      } else if (!pinned && pin) {
+        pin.remove();
+      }
+    };
+
+    const requestHaRestart = async () => {
+      const response = await fetch(`${basePath}api/v1/ha/restart`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || `restart failed (${response.status})`);
+      }
+      return payload;
+    };
+
+    const setIntegrationRowAction = (enabled, canRestart) => {
+      const row = document.querySelector('[data-ui-row="integrationVersion"]');
+      if (!row) {
+        return;
+      }
+      row.classList.toggle("actionable-row", Boolean(enabled));
+      row.title = enabled
+        ? "Click to restart Home Assistant core"
+        : "Home Assistant custom component";
+      row.onclick = null;
+      if (!enabled) {
+        return;
+      }
+      row.onclick = async () => {
+        if (!canRestart) {
+          window.alert("Home Assistant restart is not available in this runtime.");
+          return;
+        }
+        const confirmed = window.confirm(
+          "Integration version is out-of-sync. Restart Home Assistant core now?",
+        );
+        if (!confirmed) {
+          return;
+        }
+        try {
+          await requestHaRestart();
+          window.alert("Home Assistant restart requested.");
+        } catch (error) {
+          window.alert(`Failed to request Home Assistant restart: ${error.message}`);
+        }
+      };
+    };
+
+    const applyUiStatus = (status) => {
+      if (!status || typeof status !== "object") return;
+      renderRowStatus(document.querySelector('[data-ui-row="qr"]'), {
+        meta: status.qrMeta || "starting",
+        subtitle: status.qrSubtitle || "Activate login if needed",
+        attention: Boolean(status.qrNeedsAttention),
+        pinned: false,
+        dimmed: Boolean(status.qrDimmed),
+      });
+      renderRowStatus(document.querySelector('[data-ui-row="wwjsVersion"]'), {
+        meta: status.whatsappWebJsVersion || "unknown",
+        attention: false,
+        pinned: true,
+        dimmed: false,
+      });
+      const mismatch = Boolean(status.integrationVersionMismatch);
+      renderRowStatus(document.querySelector('[data-ui-row="integrationVersion"]'), {
+        meta: status.integrationVersion || "unknown",
+        subtitle: mismatch
+          ? "Restart Home Assistant core to update..."
+          : "Home Assistant custom component",
+        attention: mismatch,
+        pinned: !mismatch,
+        dimmed: mismatch,
+      });
+      setIntegrationRowAction(mismatch, Boolean(status.canRestartHomeAssistant));
+      renderRowStatus(document.querySelector('[data-ui-row="appVersion"]'), {
+        meta: status.appVersion || "unknown",
+        subtitle: status.devBuild ? "Dev build" : "Release build",
+        attention: false,
+        pinned: true,
+        dimmed: false,
+      });
+    };
+
+    const connectUiStatusWs = () => {
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      const wsUrl = new URL(`${basePath}api/v1/ui/status`, location.origin);
+      wsUrl.protocol = `${protocol}:`;
+      const socket = new WebSocket(wsUrl.toString());
+
+      socket.addEventListener("message", (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.type === "ui_status" && payload?.data && typeof payload.data === "object") {
+            applyUiStatus(payload.data);
+          }
+        } catch (_) {
+          // Ignore malformed frames.
+        }
+      });
+
+      socket.addEventListener("close", () => {
+        setTimeout(connectUiStatusWs, 2000);
+      });
+
+      socket.addEventListener("error", () => {
+        try {
+          socket.close();
+        } catch (_) {
+          // ignore
+        }
+      });
+    };
+
+    connectUiStatusWs();
   })();
 </script>

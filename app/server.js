@@ -62,13 +62,28 @@ fastify.addHook("onResponse", (request, reply, done) => {
 
 const websocketSubscriptions = new Set();
 const hotswapWsSubscriptions = new Set();
+const uiStatusSubscriptions = new Set();
 const supportedWsEvents = new Set(WS_SUPPORTED_EVENTS);
 const isSocketOpen = (socket) => socket.readyState === socket.constructor.OPEN;
 const runtimeIdentity = getRuntimeIdentity();
 const APP_VERSION = process.env.APP_BUILD_VERSION || require("../package.json").version || "unknown";
+const SUPERVISOR_BASE_URL = String(process.env.SUPERVISOR_BASE_URL || "http://supervisor").trim();
 let integrationVersionFromWs = "unknown";
 let integrationVersionFromWsAt = null;
 let integrationVersionFromWsClientId = null;
+const getSupervisorToken = () => String(process.env.SUPERVISOR_TOKEN || "").trim();
+const canRestartHomeAssistant = () => Boolean(getSupervisorToken());
+const normalizeConnectionState = (value) => {
+  const normalized =
+    typeof value === "string"
+      ? value
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, "_")
+      : "";
+  return normalized || "starting";
+};
+const toShortConnectionState = (value) => normalizeConnectionState(value).slice(0, 16);
 const isVersionMismatch = (addonVersion, integrationVersion) => {
   const addon = typeof addonVersion === "string" ? addonVersion.trim() : "";
   const integration = typeof integrationVersion === "string" ? integrationVersion.trim() : "";
@@ -84,19 +99,105 @@ const getUiVersions = () => {
     typeof integrationVersionFromWs === "string" && integrationVersionFromWs.trim()
       ? integrationVersionFromWs.trim()
       : "unknown";
+  const runtimeState = getRuntimeState();
   return {
     appName: runtimeIdentity.appName,
     appTitle: toTitleCaseName(runtimeIdentity.appName),
     appPort: runtimeIdentity.appPort,
     dirtyBuild: runtimeIdentity.dirtyBuild,
     devBuild: runtimeIdentity.devBuild ?? runtimeIdentity.dirtyBuild,
-    whatsappWebJsVersion: getRuntimeState().installedVersion || "unknown",
+    whatsappWebJsVersion: runtimeState.installedVersion || "unknown",
+    wwjsConnectionState: toShortConnectionState(runtimeState.connectionState || runtimeState.state),
+    wwjsInitialized: Boolean(runtimeState.initialized),
     appVersion: APP_VERSION,
     integrationVersion,
     integrationVersionMismatch: isVersionMismatch(APP_VERSION, integrationVersion),
     integrationVersionSource:
       integrationVersionFromWsAt && integrationVersionFromWsClientId ? "events-ws" : "unknown",
   };
+};
+const getUiStatus = () => {
+  const versions = getUiVersions();
+  const qrAvailable = Boolean(getQr());
+  const initialized = Boolean(versions.wwjsInitialized);
+  const connectionState = versions.wwjsConnectionState || "starting";
+  const qrNeedsAttention = qrAvailable || !initialized;
+  const qrMeta = initialized && !qrAvailable ? "ok" : connectionState;
+  const qrSubtitle =
+    initialized && !qrAvailable
+      ? "Activate login if needed"
+      : `Waiting for WhatsApp (${connectionState})`;
+  return {
+    ...versions,
+    qrNeedsAttention,
+    qrMeta,
+    qrSubtitle,
+    qrDimmed: !qrNeedsAttention,
+    canRestartHomeAssistant: canRestartHomeAssistant(),
+    generatedAt: new Date().toISOString(),
+  };
+};
+
+const readResponseBody = async (response) => {
+  try {
+    const payload = await response.json();
+    return typeof payload === "object" ? payload : null;
+  } catch (_) {
+    try {
+      return { raw: await response.text() };
+    } catch (_) {
+      return null;
+    }
+  }
+};
+
+const requestHomeAssistantRestart = async () => {
+  const token = getSupervisorToken();
+  if (!token) {
+    throw new Error(
+      "Home Assistant restart is unavailable (missing SUPERVISOR_TOKEN). " +
+        "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
+    );
+  }
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  const attempts = [
+    { mode: "supervisor_core_restart", path: "/core/restart", body: null },
+    {
+      mode: "homeassistant_service_restart",
+      path: "/core/api/services/homeassistant/restart",
+      body: {},
+    },
+  ];
+  const failures = [];
+  for (const attempt of attempts) {
+    try {
+      const response = await fetch(`${SUPERVISOR_BASE_URL}${attempt.path}`, {
+        method: "POST",
+        headers,
+        ...(attempt.body ? { body: JSON.stringify(attempt.body) } : {}),
+      });
+      if (response.ok) {
+        const payload = await readResponseBody(response);
+        return {
+          mode: attempt.mode,
+          status: response.status,
+          payload,
+        };
+      }
+      const failedBody = await readResponseBody(response);
+      failures.push(
+        `${attempt.path} => HTTP ${response.status} ${
+          failedBody && failedBody.raw ? failedBody.raw : ""
+        }`.trim(),
+      );
+    } catch (error) {
+      failures.push(`${attempt.path} => ${String(error?.message || error)}`);
+    }
+  }
+  throw new Error(`Failed to restart Home Assistant: ${failures.join("; ")}`);
 };
 
 const wsStats = {
@@ -146,6 +247,7 @@ const updateIntegrationVersionFromWs = (client, version, details = {}) => {
     source: "events-ws",
     ...details,
   });
+  broadcastUiStatus("integration_version_response");
   return true;
 };
 
@@ -213,12 +315,25 @@ const unregisterWsClient = (client, reason = "unknown") => {
 };
 
 const logWsTraffic = ({ client, direction, payload, messageType = null, parsedPayload = null }) => {
+  let topic = null;
+  if (parsedPayload?.type === "rpc") {
+    topic = `rpc:${parsedPayload.action || "unknown"}`;
+  } else if (parsedPayload?.type === "rpc_result") {
+    topic = `rpc_result:${parsedPayload.requestId || "-"}`;
+  } else if (typeof parsedPayload?.event === "string" && parsedPayload.event.trim()) {
+    topic = `event:${parsedPayload.event.trim()}`;
+  } else if (typeof parsedPayload?.type === "string" && parsedPayload.type.trim()) {
+    topic = parsedPayload.type.trim();
+  } else if (typeof messageType === "string" && messageType.trim()) {
+    topic = messageType.trim();
+  }
   const details = {
     channel: client.channel,
     clientId: client.id,
     direction,
     type: messageType || "raw",
     size: getPayloadSize(payload),
+    topic: topic || "raw",
   };
   if (parsedPayload?.type === "rpc") {
     details.rpcAction = parsedPayload.action || "unknown";
@@ -587,8 +702,31 @@ const broadcastRuntimeLog = (entry) => {
   }
 };
 
+const shouldBroadcastUiStatusForEvent = (eventName) =>
+  eventName === "qr" ||
+  eventName === "ready" ||
+  eventName === "disconnected" ||
+  eventName === "change_state";
+
+const broadcastUiStatus = (reason = "update") => {
+  const payload = {
+    type: "ui_status",
+    reason,
+    timestamp: new Date().toISOString(),
+    data: getUiStatus(),
+  };
+  for (const client of uiStatusSubscriptions) {
+    if (!sendWsPayload(client, payload, { suppressTrafficLog: true })) {
+      uiStatusSubscriptions.delete(client);
+    }
+  }
+};
+
 const unsubscribeFromClientEvents = subscribeToEvents((envelope) => {
   broadcastEvent(envelope);
+  if (shouldBroadcastUiStatusForEvent(envelope.event)) {
+    broadcastUiStatus(`event:${envelope.event}`);
+  }
 });
 
 const unsubscribeFromRuntimeLogs = subscribeToRuntimeLogs((entry) => {
@@ -598,14 +736,12 @@ const unsubscribeFromRuntimeLogs = subscribeToRuntimeLogs((entry) => {
 fastify.addHook("onClose", (_instance, done) => {
   unsubscribeFromClientEvents();
   unsubscribeFromRuntimeLogs();
+  uiStatusSubscriptions.clear();
   done();
 });
 
 fastify.get("/", function handler(_, reply) {
-  reply.view("root.ejs", {
-    ...getUiVersions(),
-    qrNeedsAttention: Boolean(getQr()) || !isInitialized(),
-  });
+  reply.view("root.ejs", getUiStatus());
 });
 
 fastify.get("/hotswap", function handler(_, reply) {
@@ -732,6 +868,29 @@ fastify.get("/api/v1/wwebjs/runtime", async function handler(_, reply) {
   return reply.send(getRuntimeState());
 });
 
+fastify.post("/api/v1/ha/restart", async function handler(_, reply) {
+  if (!canRestartHomeAssistant()) {
+    reply.statusCode = 503;
+    return reply.send({
+      ok: false,
+      error:
+        "Home Assistant restart is unavailable in this runtime. " +
+        "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
+    });
+  }
+  try {
+    const result = await requestHomeAssistantRestart();
+    logServer("warn", "Home Assistant restart requested from UI", {
+      mode: result.mode,
+      status: result.status,
+    });
+    return reply.send({ ok: true, result });
+  } catch (error) {
+    reply.statusCode = 502;
+    return reply.send({ ok: false, error: String(error?.message || error) });
+  }
+});
+
 fastify.get("/api/v1/wwebjs/refs", async function handler(request, reply) {
   try {
     const refresh = request.query?.refresh === "1";
@@ -755,6 +914,7 @@ fastify.post("/api/v1/wwebjs/hotswap", async function handler(request, reply) {
 
   try {
     const result = await swapToChoice(choice);
+    broadcastUiStatus("hotswap");
     return reply.send({ ok: true, result });
   } catch (error) {
     const message = String(error?.message || error);
@@ -812,6 +972,66 @@ fastify.post("/command/:type", async function handler(request, reply) {
 });
 
 fastify.after(() => {
+  fastify.get(
+    "/api/v1/ui/status",
+    { websocket: true },
+    function uiStatusWebSocket(socket, request) {
+      const client = registerWsClient({
+        channel: "ui",
+        socket,
+        request,
+      });
+      uiStatusSubscriptions.add(client);
+
+      sendWsPayload(client, {
+        type: "connected",
+        timestamp: new Date().toISOString(),
+        data: {
+          channel: "ui",
+        },
+      });
+      sendWsPayload(client, {
+        type: "ui_status",
+        reason: "connect",
+        timestamp: new Date().toISOString(),
+        data: getUiStatus(),
+      });
+
+      socket.on("message", (rawBuffer) => {
+        const rawText = rawBuffer.toString();
+        try {
+          const payload = JSON.parse(rawText);
+          markWsInbound(client, rawText, payload);
+          if (payload?.type === "ping") {
+            sendWsPayload(client, {
+              type: "pong",
+              timestamp: new Date().toISOString(),
+            });
+            return;
+          }
+          if (payload?.type === "ui_status_request") {
+            sendWsPayload(client, {
+              type: "ui_status",
+              reason: "request",
+              timestamp: new Date().toISOString(),
+              data: getUiStatus(),
+            });
+          }
+        } catch (_) {
+          markWsInbound(client, rawText);
+          // Ignore malformed messages for ui status socket.
+        }
+      });
+
+      const teardown = (reason) => {
+        uiStatusSubscriptions.delete(client);
+        unregisterWsClient(client, reason);
+      };
+      socket.on("close", () => teardown("close"));
+      socket.on("error", () => teardown("error"));
+    },
+  );
+
   fastify.get(
     "/api/v1/events/ws",
     { websocket: true },

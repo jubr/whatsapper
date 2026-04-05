@@ -601,10 +601,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     heartbeat_monitor = await async_setup_heartbeat(hass, entry, configured_host_port)
     if heartbeat_monitor is not None:
         domain_data[HEARTBEAT_MONITOR_KEY] = heartbeat_monitor
-        # Push heartbeat config to the add-on so it starts sending messages.
-        hass.async_create_task(
-            _push_heartbeat_config_to_addon(hass, entry, configured_host_port)
-        )
+
+    # Always push heartbeat config after settings are applied so the add-on
+    # timer is restarted/stopped in sync with integration options saves.
+    hass.async_create_task(
+        _push_heartbeat_config_to_addon(hass, entry, configured_host_port)
+    )
 
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry_on_update))
     return True
