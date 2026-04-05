@@ -16,6 +16,8 @@ ingress: true
 ingress_port: 3000
 ingress_entry: ''
 ingress_stream: true
+# Enable Supervisor API access when UI-triggered Home Assistant restart is desired.
+# hassio_api: true
 panel_icon: mdi:whatsapp
 panel_title: Whatsapper
 ports:

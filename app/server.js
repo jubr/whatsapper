@@ -154,7 +154,10 @@ const readResponseBody = async (response) => {
 const requestHomeAssistantRestart = async () => {
   const token = getSupervisorToken();
   if (!token) {
-    throw new Error("Home Assistant restart is unavailable (missing SUPERVISOR_TOKEN)");
+    throw new Error(
+      "Home Assistant restart is unavailable (missing SUPERVISOR_TOKEN). " +
+        "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
+    );
   }
   const headers = {
     Authorization: `Bearer ${token}`,
@@ -870,7 +873,9 @@ fastify.post("/api/v1/ha/restart", async function handler(_, reply) {
     reply.statusCode = 503;
     return reply.send({
       ok: false,
-      error: "Home Assistant restart is unavailable in this runtime",
+      error:
+        "Home Assistant restart is unavailable in this runtime. " +
+        "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
     });
   }
   try {
