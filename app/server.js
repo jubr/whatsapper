@@ -365,7 +365,8 @@ const logWsTraffic = ({ client, direction, payload, messageType = null, parsedPa
     details.requestId = parsedPayload.requestId || "-";
     details.rpcOk = parsedPayload.ok === false ? "false" : "true";
   }
-  logServer("info", "WebSocket message", details);
+  // Keep WS traffic logs concise; topic/direction already carry the useful context.
+  logServer("info", "ws", details);
 };
 
 const markWsInbound = (client, rawPayload, parsedPayload = null) => {
