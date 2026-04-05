@@ -51,7 +51,7 @@ fastify.addHook("onRequest", (request, _reply, done) => {
 fastify.addHook("onResponse", (request, reply, done) => {
   const startedAt = Number.isFinite(request._logStartedAt) ? request._logStartedAt : Date.now();
   const durationMs = Date.now() - startedAt;
-  logServer("info", "HTTP request", {
+  logServer("info", "HTTP", {
     method: request.method,
     path: request.raw.url || request.url,
     status: reply.statusCode,
