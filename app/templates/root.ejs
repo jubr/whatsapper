@@ -139,6 +139,14 @@
     opacity: 0.78;
   }
 
+  .chat-row.actionable-row {
+    cursor: pointer;
+  }
+
+  .chat-row.actionable-row:hover {
+    background: rgba(17, 27, 33, 0.65);
+  }
+
   .chat-row.inactive-row {
     opacity: 0.72;
   }
@@ -546,6 +554,51 @@
       }
     };
 
+    const requestHaRestart = async () => {
+      const response = await fetch(`${basePath}api/v1/ha/restart`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || `restart failed (${response.status})`);
+      }
+      return payload;
+    };
+
+    const setIntegrationRowAction = (enabled, canRestart) => {
+      const row = document.querySelector('[data-ui-row="integrationVersion"]');
+      if (!row) {
+        return;
+      }
+      row.classList.toggle("actionable-row", Boolean(enabled));
+      row.title = enabled
+        ? "Click to restart Home Assistant core"
+        : "Home Assistant custom component";
+      row.onclick = null;
+      if (!enabled) {
+        return;
+      }
+      row.onclick = async () => {
+        if (!canRestart) {
+          window.alert("Home Assistant restart is not available in this runtime.");
+          return;
+        }
+        const confirmed = window.confirm(
+          "Integration version is out-of-sync. Restart Home Assistant core now?",
+        );
+        if (!confirmed) {
+          return;
+        }
+        try {
+          await requestHaRestart();
+          window.alert("Home Assistant restart requested.");
+        } catch (error) {
+          window.alert(`Failed to request Home Assistant restart: ${error.message}`);
+        }
+      };
+    };
+
     const loadUiStatus = async () => {
       const response = await fetch(`${basePath}api/v1/ui/status`, { cache: "no-store" });
       if (!response.ok) {
@@ -579,6 +632,7 @@
         pinned: !mismatch,
         dimmed: mismatch,
       });
+      setIntegrationRowAction(mismatch, Boolean(status.canRestartHomeAssistant));
       renderRowStatus(document.querySelector('[data-ui-row="appVersion"]'), {
         meta: status.appVersion || "unknown",
         subtitle: status.devBuild ? "Dev build" : "Release build",

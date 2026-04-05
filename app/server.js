@@ -66,9 +66,12 @@ const supportedWsEvents = new Set(WS_SUPPORTED_EVENTS);
 const isSocketOpen = (socket) => socket.readyState === socket.constructor.OPEN;
 const runtimeIdentity = getRuntimeIdentity();
 const APP_VERSION = process.env.APP_BUILD_VERSION || require("../package.json").version || "unknown";
+const SUPERVISOR_BASE_URL = String(process.env.SUPERVISOR_BASE_URL || "http://supervisor").trim();
 let integrationVersionFromWs = "unknown";
 let integrationVersionFromWsAt = null;
 let integrationVersionFromWsClientId = null;
+const getSupervisorToken = () => String(process.env.SUPERVISOR_TOKEN || "").trim();
+const canRestartHomeAssistant = () => Boolean(getSupervisorToken());
 const normalizeConnectionState = (value) => {
   const normalized =
     typeof value === "string"
@@ -129,8 +132,68 @@ const getUiStatus = () => {
     qrMeta,
     qrSubtitle,
     qrDimmed: !qrNeedsAttention,
+    canRestartHomeAssistant: canRestartHomeAssistant(),
     generatedAt: new Date().toISOString(),
   };
+};
+
+const readResponseBody = async (response) => {
+  try {
+    const payload = await response.json();
+    return typeof payload === "object" ? payload : null;
+  } catch (_) {
+    try {
+      return { raw: await response.text() };
+    } catch (_) {
+      return null;
+    }
+  }
+};
+
+const requestHomeAssistantRestart = async () => {
+  const token = getSupervisorToken();
+  if (!token) {
+    throw new Error("Home Assistant restart is unavailable (missing SUPERVISOR_TOKEN)");
+  }
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  const attempts = [
+    { mode: "supervisor_core_restart", path: "/core/restart", body: null },
+    {
+      mode: "homeassistant_service_restart",
+      path: "/core/api/services/homeassistant/restart",
+      body: {},
+    },
+  ];
+  const failures = [];
+  for (const attempt of attempts) {
+    try {
+      const response = await fetch(`${SUPERVISOR_BASE_URL}${attempt.path}`, {
+        method: "POST",
+        headers,
+        ...(attempt.body ? { body: JSON.stringify(attempt.body) } : {}),
+      });
+      if (response.ok) {
+        const payload = await readResponseBody(response);
+        return {
+          mode: attempt.mode,
+          status: response.status,
+          payload,
+        };
+      }
+      const failedBody = await readResponseBody(response);
+      failures.push(
+        `${attempt.path} => HTTP ${response.status} ${
+          failedBody && failedBody.raw ? failedBody.raw : ""
+        }`.trim(),
+      );
+    } catch (error) {
+      failures.push(`${attempt.path} => ${String(error?.message || error)}`);
+    }
+  }
+  throw new Error(`Failed to restart Home Assistant: ${failures.join("; ")}`);
 };
 
 const wsStats = {
@@ -765,6 +828,27 @@ fastify.get("/api/v1/wwebjs/runtime", async function handler(_, reply) {
 
 fastify.get("/api/v1/ui/status", function handler(_, reply) {
   return reply.send(getUiStatus());
+});
+
+fastify.post("/api/v1/ha/restart", async function handler(_, reply) {
+  if (!canRestartHomeAssistant()) {
+    reply.statusCode = 503;
+    return reply.send({
+      ok: false,
+      error: "Home Assistant restart is unavailable in this runtime",
+    });
+  }
+  try {
+    const result = await requestHomeAssistantRestart();
+    logServer("warn", "Home Assistant restart requested from UI", {
+      mode: result.mode,
+      status: result.status,
+    });
+    return reply.send({ ok: true, result });
+  } catch (error) {
+    reply.statusCode = 502;
+    return reply.send({ ok: false, error: String(error?.message || error) });
+  }
 });
 
 fastify.get("/api/v1/wwebjs/refs", async function handler(request, reply) {
