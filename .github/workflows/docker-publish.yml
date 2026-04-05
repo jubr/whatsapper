@@ -188,58 +188,19 @@ jobs:
           if [ "$IS_DIRTY_BUILD" = "1" ]; then
             TARGET_FILE="debug/whatsappur/config.yaml"
             mkdir -p debug/whatsappur
-            python3 - "${TARGET_FILE}" "${RELEASE_VERSION}" <<'PY'
-import pathlib
-import re
-import sys
-
-target = pathlib.Path(sys.argv[1])
-release = sys.argv[2]
-if not target.exists():
-    raise SystemExit(f"Missing target file: {target}")
-text = target.read_text(encoding="utf-8")
-text, c1 = re.subn(r'(?m)^version:\s*".*"$', f'version: "{release}"', text, count=1)
-text, c2 = re.subn(
-    r'(?m)^image:\s*".*"$',
-    'image: "ghcr.io/jubr/ha-app-whatsappur-{arch}"',
-    text,
-    count=1,
-)
-text, c3 = re.subn(
-    r'(?m)^(\s*APP_BUILD_VERSION:\s*)".*"$',
-    rf'\1"{release}"',
-    text,
-    count=1,
-)
-if c1 != 1 or c2 != 1 or c3 != 1:
-    raise SystemExit(
-        f"Failed targeted update in {target}: version={c1} image={c2} app_build_version={c3}"
-    )
-target.write_text(text, encoding="utf-8")
-PY
+            [ -f "${TARGET_FILE}" ] || { echo "Missing target file: ${TARGET_FILE}" >&2; exit 1; }
+            sed -E -i \
+              -e "s|^version:[[:space:]]*\".*\"$|version: \"${RELEASE_VERSION}\"|" \
+              -e "s|^image:[[:space:]]*\".*\"$|image: \"ghcr.io/jubr/ha-app-whatsappur-{arch}\"|" \
+              -e "s|^([[:space:]]*APP_BUILD_VERSION:[[:space:]]*\").*(\")$|\\1${RELEASE_VERSION}\\2|" \
+              "${TARGET_FILE}"
           else
             TARGET_FILE="config.yaml"
-            python3 - "${TARGET_FILE}" "${RELEASE_VERSION}" <<'PY'
-import pathlib
-import re
-import sys
-
-target = pathlib.Path(sys.argv[1])
-release = sys.argv[2]
-if not target.exists():
-    raise SystemExit(f"Missing target file: {target}")
-text = target.read_text(encoding="utf-8")
-text, c1 = re.subn(r'(?m)^version:\s*".*"$', f'version: "{release}"', text, count=1)
-text, c2 = re.subn(
-    r'(?m)^image:\s*".*"$',
-    'image: "ghcr.io/jubr/ha-app-whatsapper-{arch}"',
-    text,
-    count=1,
-)
-if c1 != 1 or c2 != 1:
-    raise SystemExit(f"Failed targeted update in {target}: version={c1} image={c2}")
-target.write_text(text, encoding="utf-8")
-PY
+            [ -f "${TARGET_FILE}" ] || { echo "Missing target file: ${TARGET_FILE}" >&2; exit 1; }
+            sed -E -i \
+              -e "s|^version:[[:space:]]*\".*\"$|version: \"${RELEASE_VERSION}\"|" \
+              -e "s|^image:[[:space:]]*\".*\"$|image: \"ghcr.io/jubr/ha-app-whatsapper-{arch}\"|" \
+              "${TARGET_FILE}"
           fi
 
           git add "${TARGET_FILE}"
