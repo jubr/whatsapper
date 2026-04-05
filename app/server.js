@@ -312,12 +312,25 @@ const unregisterWsClient = (client, reason = "unknown") => {
 };
 
 const logWsTraffic = ({ client, direction, payload, messageType = null, parsedPayload = null }) => {
+  let topic = null;
+  if (parsedPayload?.type === "rpc") {
+    topic = `rpc:${parsedPayload.action || "unknown"}`;
+  } else if (parsedPayload?.type === "rpc_result") {
+    topic = `rpc_result:${parsedPayload.requestId || "-"}`;
+  } else if (typeof parsedPayload?.event === "string" && parsedPayload.event.trim()) {
+    topic = `event:${parsedPayload.event.trim()}`;
+  } else if (typeof parsedPayload?.type === "string" && parsedPayload.type.trim()) {
+    topic = parsedPayload.type.trim();
+  } else if (typeof messageType === "string" && messageType.trim()) {
+    topic = messageType.trim();
+  }
   const details = {
     channel: client.channel,
     clientId: client.id,
     direction,
     type: messageType || "raw",
     size: getPayloadSize(payload),
+    topic: topic || "raw",
   };
   if (parsedPayload?.type === "rpc") {
     details.rpcAction = parsedPayload.action || "unknown";
