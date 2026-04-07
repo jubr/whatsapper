@@ -634,11 +634,21 @@
       });
     };
 
+    let uiStatusReconnectTimer = null;
+    let uiStatusSocket = null;
+
     const connectUiStatusWs = () => {
+      if (
+        uiStatusSocket &&
+        (uiStatusSocket.readyState === WebSocket.OPEN || uiStatusSocket.readyState === WebSocket.CONNECTING)
+      ) {
+        return;
+      }
       const protocol = location.protocol === "https:" ? "wss" : "ws";
       const wsUrl = new URL(`${basePath}api/v1/ui/status`, location.origin);
       wsUrl.protocol = `${protocol}:`;
       const socket = new WebSocket(wsUrl.toString());
+      uiStatusSocket = socket;
 
       socket.addEventListener("message", (event) => {
         try {
@@ -651,8 +661,21 @@
         }
       });
 
+      socket.addEventListener("open", () => {
+        if (uiStatusReconnectTimer) {
+          clearTimeout(uiStatusReconnectTimer);
+          uiStatusReconnectTimer = null;
+        }
+      });
+
       socket.addEventListener("close", () => {
-        setTimeout(connectUiStatusWs, 2000);
+        if (uiStatusSocket === socket) {
+          uiStatusSocket = null;
+        }
+        if (uiStatusReconnectTimer) {
+          clearTimeout(uiStatusReconnectTimer);
+        }
+        uiStatusReconnectTimer = setTimeout(connectUiStatusWs, 2000);
       });
 
       socket.addEventListener("error", () => {
@@ -665,5 +688,17 @@
     };
 
     connectUiStatusWs();
+    window.addEventListener("beforeunload", () => {
+      if (uiStatusReconnectTimer) {
+        clearTimeout(uiStatusReconnectTimer);
+      }
+      if (uiStatusSocket) {
+        try {
+          uiStatusSocket.close();
+        } catch (_) {
+          // ignore
+        }
+      }
+    });
   })();
 </script>

@@ -109,7 +109,7 @@ const sendHeartbeat = async () => {
 
   try {
     await client.sendMessage(chatId, messageText);
-    log("info", "Heartbeat sent", { chatId, message: messageText });
+    log("debug", "Heartbeat sent", { chatId, message: messageText });
   } catch (err) {
     log("warn", "Heartbeat: failed to send message", {
       chatId,
@@ -132,7 +132,7 @@ const sendHeartbeat = async () => {
       try {
         // Use "Delete for me" to avoid leaving a visible "message deleted" trace.
         await msg.delete(false);
-        log("info", "Heartbeat: deleted old message", {
+        log("trace", "Heartbeat: deleted old message", {
           messageId: msg.id?._serialized,
           timestamp: new Date(Number(msg.timestamp) * 1000).toISOString(),
           deleteMode: "for_me",
@@ -167,7 +167,7 @@ const startTimer = (intervalMinutes) => {
       log("warn", "Heartbeat tick error", { error: String(err?.message || err) });
     });
   }, intervalMs);
-  log("info", "Heartbeat timer started", { intervalMinutes });
+  log("debug", "Heartbeat timer started", { intervalMinutes });
 };
 
 const applyConfig = (cfg) => {
@@ -177,7 +177,7 @@ const applyConfig = (cfg) => {
   } else {
     stopTimer();
     if (!cfg.enabled) {
-      log("info", "Heartbeat disabled");
+      log("debug", "Heartbeat disabled");
     }
   }
 };
@@ -213,7 +213,7 @@ const updateConfig = async (patch) => {
   }
   await saveConfig(next);
   applyConfig(next);
-  log("info", "Heartbeat config updated", next);
+  log("debug", "Heartbeat config updated", next);
   return next;
 };
 

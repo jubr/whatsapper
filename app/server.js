@@ -51,7 +51,7 @@ fastify.addHook("onRequest", (request, _reply, done) => {
 fastify.addHook("onResponse", (request, reply, done) => {
   const startedAt = Number.isFinite(request._logStartedAt) ? request._logStartedAt : Date.now();
   const durationMs = Date.now() - startedAt;
-  logServer("info", "HTTP", {
+  logServer("debug", "HTTP", {
     method: request.method,
     path: request.raw.url || request.url,
     status: reply.statusCode,
@@ -264,7 +264,7 @@ const updateIntegrationVersionFromWs = (client, version, details = {}) => {
   integrationVersionFromWs = normalizedVersion;
   integrationVersionFromWsAt = new Date().toISOString();
   integrationVersionFromWsClientId = client?.id || null;
-  logServer("info", "Integration version updated via events ws", {
+  logServer("debug", "Integration version updated via events ws", {
     clientId: integrationVersionFromWsClientId || "-",
     integrationVersion: normalizedVersion,
     source: "events-ws",
@@ -310,7 +310,7 @@ const registerWsClient = ({ channel, socket, request, selectedEvents = null }) =
     wsStats.runtimeConnectionsAccepted += 1;
   }
 
-  logServer("info", "Connected", {
+  logServer("debug", "Connected", {
     channel: client.channel,
     clientId: client.id,
     remoteAddress: client.remoteAddress || "-",
@@ -330,7 +330,7 @@ const unregisterWsClient = (client, reason = "unknown") => {
   }
 
   wsStats.totalConnectionsClosed += 1;
-  logServer("info", "Disconnected", {
+  logServer("debug", "Disconnected", {
     channel: client.channel,
     clientId: client.id,
     reason,
@@ -366,7 +366,7 @@ const logWsTraffic = ({ client, direction, payload, messageType = null, parsedPa
     details.rpcOk = parsedPayload.ok === false ? "false" : "true";
   }
   // Keep WS traffic logs concise; topic/direction already carry the useful context.
-  logServer("info", "ws", details);
+  logServer("trace", "ws", details);
 };
 
 const markWsInbound = (client, rawPayload, parsedPayload = null) => {
@@ -1132,7 +1132,7 @@ fastify.after(() => {
             const requestId = typeof payload.requestId === "string" ? payload.requestId : null;
             const rpcParams =
               payload.params && typeof payload.params === "object" ? payload.params : {};
-            logServer("info", "RPC request", {
+            logServer("debug", "RPC request", {
               channel: "events",
               clientId: client.id,
               action: payload.action || "unknown",
@@ -1145,7 +1145,7 @@ fastify.after(() => {
             try {
               const result = await handleWsRpcRequest(payload);
               wsStats.rpcResponses += 1;
-              logServer("info", "RPC response", {
+              logServer("debug", "RPC response", {
                 channel: "events",
                 clientId: client.id,
                 action: payload.action || "unknown",
