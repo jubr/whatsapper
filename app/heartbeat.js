@@ -16,13 +16,17 @@ const CONFIG_PATH = path.join(
   process.env.DATA_PATH || "/data",
   ".heartbeat-config.json",
 );
+const STATE_PATH = path.join(
+  process.env.DATA_PATH || "/data",
+  ".heartbeat-state.json",
+);
 
 const HEARTBEAT_PREFIX = "Heartbeat ";
 const MAX_VISIBLE = 3;
-const SWEEP_FETCH_LIMIT = 200;
 
 let _timer = null;
 let _config = { enabled: false, chatName: "", intervalMinutes: 5 };
+let _state = { sent: [] };
 let _emitLog = null;
 let _getClient = null;
 let _resolveChatIdByName = null;
@@ -31,6 +35,10 @@ const defaultConfig = () => ({
   enabled: false,
   chatName: "",
   intervalMinutes: 5,
+});
+
+const defaultState = () => ({
+  sent: [],
 });
 
 const loadConfig = async () => {
@@ -55,6 +63,29 @@ const saveConfig = async (cfg) => {
   await fs.writeFile(CONFIG_PATH, JSON.stringify(cfg, null, 2), "utf8");
 };
 
+const loadState = async () => {
+  try {
+    const raw = await fs.readFile(STATE_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    const sent = Array.isArray(parsed?.sent)
+      ? parsed.sent
+          .map((entry) => ({
+            id: typeof entry?.id === "string" ? entry.id : "",
+            sentAtMs: Number(entry?.sentAtMs),
+          }))
+          .filter((entry) => entry.id && Number.isFinite(entry.sentAtMs) && entry.sentAtMs > 0)
+      : [];
+    return { sent };
+  } catch (_) {
+    return defaultState();
+  }
+};
+
+const saveState = async () => {
+  await fs.mkdir(path.dirname(STATE_PATH), { recursive: true });
+  await fs.writeFile(STATE_PATH, JSON.stringify(_state, null, 2), "utf8");
+};
+
 const log = (level, msg, details = {}) => {
   if (_emitLog) {
     _emitLog(level, msg, { scope: "heartbeat", ...details });
@@ -76,20 +107,74 @@ const resolveChatId = async (chatName) => {
 
 const isHeartbeatMessage = (msg) => {
   const body = typeof msg.body === "string" ? msg.body : "";
-  return body.startsWith(HEARTBEAT_PREFIX);
+  return body.includes(HEARTBEAT_PREFIX);
 };
 
-const getMessageTimestampMs = (msg) => {
-  const tsNumber = Number(msg?.timestamp);
-  if (Number.isFinite(tsNumber) && tsNumber > 0) {
-    // whatsapp-web.js timestamps are second-based.
-    return tsNumber * 1000;
+const trackSentHeartbeat = async (messageId, sentAtMs) => {
+  if (!messageId || !Number.isFinite(sentAtMs) || sentAtMs <= 0) {
+    return;
   }
-  const dateValue = msg?.timestamp instanceof Date ? msg.timestamp : msg?.t;
-  if (dateValue instanceof Date && Number.isFinite(dateValue.getTime())) {
-    return dateValue.getTime();
+  _state.sent.push({ id: messageId, sentAtMs });
+  if (_state.sent.length > 300) {
+    _state.sent = _state.sent.slice(_state.sent.length - 300);
   }
-  return null;
+  try {
+    await saveState();
+  } catch (err) {
+    log("warn", "Heartbeat: failed to persist state", {
+      error: String(err?.message || err),
+    });
+  }
+};
+
+const getTrackedIdsToDelete = (cutoffMs) => {
+  const agedIds = new Set(
+    _state.sent.filter((entry) => entry.sentAtMs < cutoffMs).map((entry) => entry.id),
+  );
+  if (_state.sent.length > MAX_VISIBLE) {
+    const overflow = _state.sent.length - MAX_VISIBLE;
+    for (const entry of _state.sent.slice(0, overflow)) {
+      agedIds.add(entry.id);
+    }
+  }
+  return agedIds;
+};
+
+const sweepTrackedHeartbeats = async (client, cutoffMs) => {
+  const idsToDelete = getTrackedIdsToDelete(cutoffMs);
+  if (idsToDelete.size === 0) {
+    return;
+  }
+
+  for (const messageId of idsToDelete) {
+    try {
+      const msg =
+        typeof client.getMessageById === "function" ? await client.getMessageById(messageId) : null;
+      if (!msg || !isHeartbeatMessage(msg) || typeof msg.delete !== "function") {
+        continue;
+      }
+      // Use "Delete for me" to avoid leaving a visible "message deleted" trace.
+      await msg.delete(false);
+      log("trace", "Heartbeat: deleted old message", {
+        messageId,
+        deleteMode: "for_me",
+      });
+    } catch (delErr) {
+      log("debug", "Heartbeat: tracked delete skipped", {
+        messageId,
+        error: String(delErr?.message || delErr),
+      });
+    }
+  }
+
+  _state.sent = _state.sent.filter((entry) => !idsToDelete.has(entry.id));
+  try {
+    await saveState();
+  } catch (err) {
+    log("warn", "Heartbeat: failed to persist state after sweep", {
+      error: String(err?.message || err),
+    });
+  }
 };
 
 const sendHeartbeat = async () => {
@@ -121,8 +206,11 @@ const sendHeartbeat = async () => {
   const now = new Date().toISOString();
   const messageText = `${HEARTBEAT_PREFIX}${now}`;
 
+  let sentMessageId = null;
+  const sentAtMs = Date.now();
   try {
-    await client.sendMessage(chatId, messageText);
+    const response = await client.sendMessage(chatId, messageText);
+    sentMessageId = response?.id?._serialized || null;
     log("debug", "Heartbeat sent", { chatId, message: messageText });
   } catch (err) {
     log("warn", "Heartbeat: failed to send message", {
@@ -135,36 +223,13 @@ const sendHeartbeat = async () => {
   // Delete heartbeat messages older than 3 * intervalMinutes.
   const cutoffMs = Date.now() - cfg.intervalMinutes * MAX_VISIBLE * 60 * 1000;
   try {
-    const chat = await client.getChatById(chatId);
-    const messages = await chat.fetchMessages({ limit: SWEEP_FETCH_LIMIT });
-    const toDelete = messages.filter((msg) => {
-      if (!isHeartbeatMessage(msg)) return false;
-      const ts = getMessageTimestampMs(msg);
-      if (!Number.isFinite(ts)) {
-        return false;
-      }
-      return ts < cutoffMs;
-    });
-    for (const msg of toDelete) {
-      try {
-        // Use "Delete for me" to avoid leaving a visible "message deleted" trace.
-        await msg.delete(false);
-        log("trace", "Heartbeat: deleted old message", {
-          messageId: msg.id?._serialized,
-          timestamp: new Date(getMessageTimestampMs(msg) || Date.now()).toISOString(),
-          deleteMode: "for_me",
-        });
-      } catch (delErr) {
-        log("warn", "Heartbeat: failed to delete old message", {
-          messageId: msg.id?._serialized,
-          error: String(delErr?.message || delErr),
-        });
-      }
+    if (sentMessageId) {
+      await trackSentHeartbeat(sentMessageId, sentAtMs);
     }
+    await sweepTrackedHeartbeats(client, cutoffMs);
     log("trace", "Heartbeat: sweep complete", {
-      scanned: messages.length,
-      deleted: toDelete.length,
-      fetchLimit: SWEEP_FETCH_LIMIT,
+      tracked: _state.sent.length,
+      cutoff: new Date(cutoffMs).toISOString(),
     });
   } catch (err) {
     log("warn", "Heartbeat: failed to sweep old messages", {
@@ -216,6 +281,7 @@ const init = async ({ getClient, emitLog, resolveChatIdByName = null }) => {
   _emitLog = emitLog;
   _resolveChatIdByName = resolveChatIdByName;
 
+  _state = await loadState();
   const cfg = await loadConfig();
   applyConfig(cfg);
   return cfg;
