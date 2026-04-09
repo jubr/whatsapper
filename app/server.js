@@ -157,8 +157,19 @@ const getUiStatus = () => {
     qrSubtitle,
     qrDimmed: !qrNeedsAttention,
     canRestartHomeAssistant: canRestartHomeAssistant(),
+    canStoreRefresh: canRestartHomeAssistant(),
     generatedAt: new Date().toISOString(),
   };
+};
+
+const unwrapSupervisorPayloadData = (payload) => {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  if (payload.data && typeof payload.data === "object") {
+    return payload.data;
+  }
+  return payload;
 };
 
 const readResponseBody = async (response) => {
@@ -174,18 +185,22 @@ const readResponseBody = async (response) => {
   }
 };
 
-const requestHomeAssistantRestart = async () => {
+const supervisorHeaders = () => {
   const token = getSupervisorToken();
   if (!token) {
     throw new Error(
-      "Home Assistant restart is unavailable (missing SUPERVISOR_TOKEN). " +
+      "Supervisor API is unavailable (missing SUPERVISOR_TOKEN). " +
         "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
     );
   }
-  const headers = {
+  return {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
+};
+
+const requestHomeAssistantRestart = async () => {
+  const headers = supervisorHeaders();
   const attempts = [
     { mode: "supervisor_core_restart", path: "/core/restart", body: null },
     {
@@ -221,6 +236,112 @@ const requestHomeAssistantRestart = async () => {
     }
   }
   throw new Error(`Failed to restart Home Assistant: ${failures.join("; ")}`);
+};
+
+const triggerStoreRefresh = async () => {
+  const headers = supervisorHeaders();
+  const response = await fetch(`${SUPERVISOR_BASE_URL}/store/reload`, {
+    method: "POST",
+    headers,
+  });
+  if (!response.ok) {
+    const body = await readResponseBody(response);
+    throw new Error(
+      `Store refresh failed (HTTP ${response.status}) ${
+        body && body.raw ? body.raw : ""
+      }`.trim(),
+    );
+  }
+  return {
+    status: response.status,
+    payload: await readResponseBody(response),
+  };
+};
+
+const triggerAddonUpdateCheck = async (addonSlug) => {
+  const headers = supervisorHeaders();
+  const response = await fetch(`${SUPERVISOR_BASE_URL}/addons/${addonSlug}/info`, {
+    method: "GET",
+    headers,
+  });
+  if (!response.ok) {
+    const body = await readResponseBody(response);
+    throw new Error(
+      `Addon info fetch failed (HTTP ${response.status}) ${
+        body && body.raw ? body.raw : ""
+      }`.trim(),
+    );
+  }
+  const payload = await readResponseBody(response);
+  const data = payload && typeof payload === "object" && payload.data ? payload.data : payload;
+  const updateAvailable = Boolean(data?.update_available);
+  const latestVersion =
+    typeof data?.version_latest === "string" ? data.version_latest : null;
+  const currentVersion =
+    typeof data?.version === "string" ? data.version : null;
+  return {
+    status: response.status,
+    updateAvailable,
+    latestVersion,
+    currentVersion,
+    payload,
+  };
+};
+
+const requestStoreRefreshAndCheckUpdates = async () => {
+  const token = getSupervisorToken();
+  if (!token) {
+    throw new Error(
+      "Store refresh is unavailable (missing SUPERVISOR_TOKEN). " +
+        "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
+    );
+  }
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+
+  const reloadResponse = await fetch(`${SUPERVISOR_BASE_URL}/store/reload`, {
+    method: "POST",
+    headers,
+  });
+  const reloadPayload = await readResponseBody(reloadResponse);
+  if (!reloadResponse.ok) {
+    throw new Error(
+      `Store refresh failed with HTTP ${reloadResponse.status}${
+        reloadPayload && reloadPayload.raw ? `: ${reloadPayload.raw}` : ""
+      }`,
+    );
+  }
+
+  const addonSlug = runtimeIdentity.appName || "whatsapper";
+  const addonInfoResponse = await fetch(
+    `${SUPERVISOR_BASE_URL}/addons/${encodeURIComponent(addonSlug)}/info`,
+    {
+      method: "GET",
+      headers,
+    },
+  );
+  const addonInfoPayload = await readResponseBody(addonInfoResponse);
+  if (!addonInfoResponse.ok) {
+    throw new Error(
+      `Add-on info check failed with HTTP ${addonInfoResponse.status}${
+        addonInfoPayload && addonInfoPayload.raw ? `: ${addonInfoPayload.raw}` : ""
+      }`,
+    );
+  }
+
+  const addonData = unwrapSupervisorPayloadData(addonInfoPayload) || {};
+  return {
+    storeReloadStatus: reloadResponse.status,
+    addon: {
+      slug: addonSlug,
+      version: addonData.version ?? null,
+      latestVersion: addonData.version_latest ?? addonData.latest_version ?? null,
+      updateAvailable: Boolean(addonData.update_available),
+      autoUpdate: addonData.auto_update ?? null,
+    },
+  };
 };
 
 const wsStats = {
@@ -907,6 +1028,30 @@ fastify.post("/api/v1/ha/restart", async function handler(_, reply) {
     logServer("warn", "Home Assistant restart requested from UI", {
       mode: result.mode,
       status: result.status,
+    });
+    return reply.send({ ok: true, result });
+  } catch (error) {
+    reply.statusCode = 502;
+    return reply.send({ ok: false, error: String(error?.message || error) });
+  }
+});
+
+fastify.post("/api/v1/ha/store-refresh", async function handler(_, reply) {
+  if (!canRestartHomeAssistant()) {
+    reply.statusCode = 503;
+    return reply.send({
+      ok: false,
+      error:
+        "Store refresh is unavailable in this runtime. " +
+        "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
+    });
+  }
+  try {
+    const result = await requestStoreRefreshAndCheckUpdates();
+    logServer("info", "Store refresh requested from UI", {
+      addon: result?.addon?.slug || runtimeIdentity.appName || "-",
+      updateAvailable: String(Boolean(result?.addon?.updateAvailable)),
+      autoUpdate: String(Boolean(result?.addon?.autoUpdate)),
     });
     return reply.send({ ok: true, result });
   } catch (error) {
