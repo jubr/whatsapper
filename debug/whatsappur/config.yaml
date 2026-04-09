@@ -17,6 +17,8 @@ ingress_port: 3001
 ingress_entry: ''
 ingress_stream: true
 hassio_api: true
+hassio_role: admin
+homeassistant_api: true
 panel_icon: mdi:whatsapp
 panel_title: Whatsappur
 ports:
