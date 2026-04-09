@@ -160,15 +160,18 @@
   }
 
   .log-row {
-    display: grid;
-    grid-template-columns: auto auto auto auto auto auto;
-    gap: 0.38rem;
+    display: flex;
     align-items: baseline;
+    gap: 0.38rem;
     padding: 0.08rem 0.2rem;
     border-radius: 0.2rem;
     white-space: nowrap;
     width: max-content;
     min-width: 100%;
+  }
+
+  .log-row > * {
+    flex: 0 0 auto;
   }
 
   .log-row:hover {
