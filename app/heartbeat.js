@@ -19,6 +19,7 @@ const CONFIG_PATH = path.join(
 
 const HEARTBEAT_PREFIX = "Heartbeat ";
 const MAX_VISIBLE = 3;
+const SWEEP_FETCH_LIMIT = 200;
 
 let _timer = null;
 let _config = { enabled: false, chatName: "", intervalMinutes: 5 };
@@ -75,7 +76,20 @@ const resolveChatId = async (chatName) => {
 
 const isHeartbeatMessage = (msg) => {
   const body = typeof msg.body === "string" ? msg.body : "";
-  return body.startsWith(HEARTBEAT_PREFIX) && msg.fromMe === true;
+  return body.startsWith(HEARTBEAT_PREFIX);
+};
+
+const getMessageTimestampMs = (msg) => {
+  const tsNumber = Number(msg?.timestamp);
+  if (Number.isFinite(tsNumber) && tsNumber > 0) {
+    // whatsapp-web.js timestamps are second-based.
+    return tsNumber * 1000;
+  }
+  const dateValue = msg?.timestamp instanceof Date ? msg.timestamp : msg?.t;
+  if (dateValue instanceof Date && Number.isFinite(dateValue.getTime())) {
+    return dateValue.getTime();
+  }
+  return null;
 };
 
 const sendHeartbeat = async () => {
@@ -122,10 +136,13 @@ const sendHeartbeat = async () => {
   const cutoffMs = Date.now() - cfg.intervalMinutes * MAX_VISIBLE * 60 * 1000;
   try {
     const chat = await client.getChatById(chatId);
-    const messages = await chat.fetchMessages({ limit: 50 });
+    const messages = await chat.fetchMessages({ limit: SWEEP_FETCH_LIMIT });
     const toDelete = messages.filter((msg) => {
       if (!isHeartbeatMessage(msg)) return false;
-      const ts = Number(msg.timestamp) * 1000;
+      const ts = getMessageTimestampMs(msg);
+      if (!Number.isFinite(ts)) {
+        return false;
+      }
       return ts < cutoffMs;
     });
     for (const msg of toDelete) {
@@ -134,7 +151,7 @@ const sendHeartbeat = async () => {
         await msg.delete(false);
         log("trace", "Heartbeat: deleted old message", {
           messageId: msg.id?._serialized,
-          timestamp: new Date(Number(msg.timestamp) * 1000).toISOString(),
+          timestamp: new Date(getMessageTimestampMs(msg) || Date.now()).toISOString(),
           deleteMode: "for_me",
         });
       } catch (delErr) {
@@ -144,6 +161,11 @@ const sendHeartbeat = async () => {
         });
       }
     }
+    log("trace", "Heartbeat: sweep complete", {
+      scanned: messages.length,
+      deleted: toDelete.length,
+      fetchLimit: SWEEP_FETCH_LIMIT,
+    });
   } catch (err) {
     log("warn", "Heartbeat: failed to sweep old messages", {
       chatId,
