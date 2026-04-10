@@ -202,7 +202,7 @@ const supervisorHeaders = () => {
 const requestHomeAssistantRestart = async () => {
   const headers = supervisorHeaders();
   const attempts = [
-    { mode: "supervisor_core_restart", path: "/core/restart", body: null },
+    { mode: "supervisor_core_restart", path: "/core/restart", body: {} },
     {
       mode: "homeassistant_service_restart",
       path: "/core/api/services/homeassistant/restart",
