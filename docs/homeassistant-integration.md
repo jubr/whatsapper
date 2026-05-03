@@ -162,6 +162,48 @@ GET /api/v1/chats?name=<target_name>
 
 If lookup is ambiguous (multiple matches) the send is aborted and a log error is emitted, so messages are not sent to the wrong chat.
 
+## Notify service: edit and delete operations
+
+`notify.whatsapper` / `notify.whatsappur` now support message edit/delete operations through
+the same websocket RPC channel used for send/reaction.
+
+Use these keys under `data:`:
+
+- `data.edit_message_id`: target message ID to edit
+- `data.delete_message_id`: target message ID to delete
+- `data.delete_for_everyone`: optional boolean (default `false`, i.e. delete for me)
+
+Behavior:
+
+- If `edit_message_id` is present, the notify call routes to `edit_message` RPC.
+  - The new text is taken from the composed notify message body (title + message).
+  - `target`/chat resolution is not required.
+- If `delete_message_id` is present, the notify call routes to `delete_message` RPC.
+  - `delete_for_everyone` controls delete mode.
+  - `target`/chat resolution is not required.
+- Edit/delete routing has priority over reaction/send routing.
+
+Example: edit a previously sent message
+
+```yaml
+service: notify.whatsapper
+data:
+  message: "Updated content"
+  data:
+    edit_message_id: "true_12345@c.us_ABCDEF"
+```
+
+Example: delete a message for me
+
+```yaml
+service: notify.whatsapper
+data:
+  message: "ignored for delete route"
+  data:
+    delete_message_id: "true_12345@c.us_ABCDEF"
+    delete_for_everyone: false
+```
+
 ## Example automation: ping -> pong
 
 ```yaml

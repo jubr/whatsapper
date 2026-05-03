@@ -820,6 +820,87 @@ const handleWsRpcRequest = async (rpcPayload) => {
       };
     }
 
+    case "edit_message": {
+      const messageId = typeof params.messageId === "string" ? params.messageId.trim() : "";
+      const message = typeof params.message === "string" ? params.message : "";
+      if (!messageId) {
+        throw new Error("Missing params.messageId for edit_message");
+      }
+      if (!message.trim()) {
+        throw new Error("Missing params.message for edit_message");
+      }
+      const activeClient = ensureActiveClient();
+      if (!activeClient) {
+        throw new Error("Client not initialized");
+      }
+      if (typeof activeClient.getMessageById !== "function") {
+        throw new Error("Client does not support getMessageById");
+      }
+      const targetMessage = await activeClient.getMessageById(messageId);
+      if (!targetMessage) {
+        throw new Error(`Message '${messageId}' not found`);
+      }
+      if (targetMessage.fromMe !== true) {
+        throw new Error("Can only edit self-sent messages");
+      }
+      if (typeof targetMessage.edit !== "function") {
+        throw new Error("Target message does not support edit()");
+      }
+      logServer("debug", "RPC edit_message params", {
+        messageId,
+        messageLength: message.length,
+      });
+      await targetMessage.edit(message);
+      logServer("debug", "RPC edit_message applied", {
+        messageId,
+        messageLength: message.length,
+      });
+      return {
+        messageId,
+        edited: true,
+      };
+    }
+
+    case "delete_message": {
+      const messageId = typeof params.messageId === "string" ? params.messageId.trim() : "";
+      const everyone =
+        params.everyone === true ||
+        params.everyone === "true" ||
+        params.everyone === 1 ||
+        params.everyone === "1";
+      if (!messageId) {
+        throw new Error("Missing params.messageId for delete_message");
+      }
+      const activeClient = ensureActiveClient();
+      if (!activeClient) {
+        throw new Error("Client not initialized");
+      }
+      if (typeof activeClient.getMessageById !== "function") {
+        throw new Error("Client does not support getMessageById");
+      }
+      const targetMessage = await activeClient.getMessageById(messageId);
+      if (!targetMessage) {
+        throw new Error(`Message '${messageId}' not found`);
+      }
+      if (typeof targetMessage.delete !== "function") {
+        throw new Error("Target message does not support delete()");
+      }
+      logServer("debug", "RPC delete_message params", {
+        messageId,
+        everyone,
+      });
+      await targetMessage.delete(everyone);
+      logServer("debug", "RPC delete_message applied", {
+        messageId,
+        deleteMode: everyone ? "everyone" : "for_me",
+      });
+      return {
+        messageId,
+        deleted: true,
+        deleteMode: everyone ? "everyone" : "for_me",
+      };
+    }
+
     default:
       throw new Error(`Unsupported rpc action '${action}'`);
   }
