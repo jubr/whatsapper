@@ -601,6 +601,78 @@ const ensureActiveClient = () => {
   return getClient();
 };
 
+const toBooleanFlag = (value) =>
+  value === true || value === "true" || value === 1 || value === "1";
+
+const getMessageByIdOrThrow = async (messageId) => {
+  const normalizedMessageId = typeof messageId === "string" ? messageId.trim() : "";
+  if (!normalizedMessageId) {
+    throw new Error("Missing messageId");
+  }
+  const activeClient = ensureActiveClient();
+  if (!activeClient) {
+    throw new Error("Client not initialized");
+  }
+  if (typeof activeClient.getMessageById !== "function") {
+    throw new Error("Client does not support getMessageById");
+  }
+  const targetMessage = await activeClient.getMessageById(normalizedMessageId);
+  if (!targetMessage) {
+    throw new Error(`Message '${normalizedMessageId}' not found`);
+  }
+  return { targetMessage, messageId: normalizedMessageId };
+};
+
+const editMessageById = async ({ messageId, message }) => {
+  const nextMessage = typeof message === "string" ? message : "";
+  if (!nextMessage.trim()) {
+    throw new Error("Missing message");
+  }
+  const { targetMessage, messageId: normalizedMessageId } = await getMessageByIdOrThrow(messageId);
+  if (targetMessage.fromMe !== true) {
+    throw new Error("Can only edit self-sent messages");
+  }
+  if (typeof targetMessage.edit !== "function") {
+    throw new Error("Target message does not support edit()");
+  }
+  logServer("debug", "edit_message params", {
+    messageId: normalizedMessageId,
+    messageLength: nextMessage.length,
+  });
+  await targetMessage.edit(nextMessage);
+  logServer("debug", "edit_message applied", {
+    messageId: normalizedMessageId,
+    messageLength: nextMessage.length,
+  });
+  return {
+    messageId: normalizedMessageId,
+    edited: true,
+  };
+};
+
+const deleteMessageById = async ({ messageId, everyone = false }) => {
+  const shouldDeleteForEveryone = toBooleanFlag(everyone);
+  const { targetMessage, messageId: normalizedMessageId } = await getMessageByIdOrThrow(messageId);
+  if (typeof targetMessage.delete !== "function") {
+    throw new Error("Target message does not support delete()");
+  }
+  logServer("debug", "delete_message params", {
+    messageId: normalizedMessageId,
+    everyone: shouldDeleteForEveryone,
+  });
+  await targetMessage.delete(shouldDeleteForEveryone);
+  const deleteMode = shouldDeleteForEveryone ? "everyone" : "for_me";
+  logServer("debug", "delete_message applied", {
+    messageId: normalizedMessageId,
+    deleteMode,
+  });
+  return {
+    messageId: normalizedMessageId,
+    deleted: true,
+    deleteMode,
+  };
+};
+
 const listChats = async () => {
   const activeClient = ensureActiveClient();
   if (!activeClient) {
@@ -762,11 +834,7 @@ const handleWsRpcRequest = async (rpcPayload) => {
     case "react_message": {
       const messageId = typeof params.messageId === "string" ? params.messageId.trim() : "";
       const reaction = typeof params.reaction === "string" ? params.reaction.trim() : "";
-      const toggle =
-        params.toggle === true ||
-        params.toggle === "true" ||
-        params.toggle === 1 ||
-        params.toggle === "1";
+      const toggle = toBooleanFlag(params.toggle);
       if (!messageId) {
         throw new Error("Missing params.messageId for react_message");
       }
@@ -821,84 +889,20 @@ const handleWsRpcRequest = async (rpcPayload) => {
     }
 
     case "edit_message": {
-      const messageId = typeof params.messageId === "string" ? params.messageId.trim() : "";
-      const message = typeof params.message === "string" ? params.message : "";
-      if (!messageId) {
+      if (typeof params.messageId !== "string" || !params.messageId.trim()) {
         throw new Error("Missing params.messageId for edit_message");
       }
-      if (!message.trim()) {
+      if (typeof params.message !== "string" || !params.message.trim()) {
         throw new Error("Missing params.message for edit_message");
       }
-      const activeClient = ensureActiveClient();
-      if (!activeClient) {
-        throw new Error("Client not initialized");
-      }
-      if (typeof activeClient.getMessageById !== "function") {
-        throw new Error("Client does not support getMessageById");
-      }
-      const targetMessage = await activeClient.getMessageById(messageId);
-      if (!targetMessage) {
-        throw new Error(`Message '${messageId}' not found`);
-      }
-      if (targetMessage.fromMe !== true) {
-        throw new Error("Can only edit self-sent messages");
-      }
-      if (typeof targetMessage.edit !== "function") {
-        throw new Error("Target message does not support edit()");
-      }
-      logServer("debug", "RPC edit_message params", {
-        messageId,
-        messageLength: message.length,
-      });
-      await targetMessage.edit(message);
-      logServer("debug", "RPC edit_message applied", {
-        messageId,
-        messageLength: message.length,
-      });
-      return {
-        messageId,
-        edited: true,
-      };
+      return editMessageById({ messageId: params.messageId, message: params.message });
     }
 
     case "delete_message": {
-      const messageId = typeof params.messageId === "string" ? params.messageId.trim() : "";
-      const everyone =
-        params.everyone === true ||
-        params.everyone === "true" ||
-        params.everyone === 1 ||
-        params.everyone === "1";
-      if (!messageId) {
+      if (typeof params.messageId !== "string" || !params.messageId.trim()) {
         throw new Error("Missing params.messageId for delete_message");
       }
-      const activeClient = ensureActiveClient();
-      if (!activeClient) {
-        throw new Error("Client not initialized");
-      }
-      if (typeof activeClient.getMessageById !== "function") {
-        throw new Error("Client does not support getMessageById");
-      }
-      const targetMessage = await activeClient.getMessageById(messageId);
-      if (!targetMessage) {
-        throw new Error(`Message '${messageId}' not found`);
-      }
-      if (typeof targetMessage.delete !== "function") {
-        throw new Error("Target message does not support delete()");
-      }
-      logServer("debug", "RPC delete_message params", {
-        messageId,
-        everyone,
-      });
-      await targetMessage.delete(everyone);
-      logServer("debug", "RPC delete_message applied", {
-        messageId,
-        deleteMode: everyone ? "everyone" : "for_me",
-      });
-      return {
-        messageId,
-        deleted: true,
-        deleteMode: everyone ? "everyone" : "for_me",
-      };
+      return deleteMessageById({ messageId: params.messageId, everyone: params.everyone });
     }
 
     default:
@@ -1008,6 +1012,58 @@ fastify.post("/api/v1/send-test", async function handler(request, reply) {
   } catch (error) {
     reply.statusCode = 500;
     return reply.send({ error: String(error?.message || error) });
+  }
+});
+
+fastify.post("/api/v1/messages/edit", async function handler(request, reply) {
+  const messageId =
+    typeof request.body?.messageId === "string" ? request.body.messageId.trim() : "";
+  const message = typeof request.body?.message === "string" ? request.body.message : "";
+  if (!messageId) {
+    reply.statusCode = 400;
+    return reply.send({ error: "Missing messageId" });
+  }
+  if (!message.trim()) {
+    reply.statusCode = 400;
+    return reply.send({ error: "Missing message" });
+  }
+  try {
+    const result = await editMessageById({ messageId, message });
+    return reply.send({ ok: true, ...result });
+  } catch (error) {
+    const messageText = String(error?.message || error);
+    if (messageText === "Client not initialized") {
+      reply.statusCode = 503;
+    } else if (messageText.startsWith("Missing ")) {
+      reply.statusCode = 400;
+    } else {
+      reply.statusCode = 500;
+    }
+    return reply.send({ error: messageText });
+  }
+});
+
+fastify.post("/api/v1/messages/delete", async function handler(request, reply) {
+  const messageId =
+    typeof request.body?.messageId === "string" ? request.body.messageId.trim() : "";
+  const everyone = request.body?.everyone;
+  if (!messageId) {
+    reply.statusCode = 400;
+    return reply.send({ error: "Missing messageId" });
+  }
+  try {
+    const result = await deleteMessageById({ messageId, everyone });
+    return reply.send({ ok: true, ...result });
+  } catch (error) {
+    const messageText = String(error?.message || error);
+    if (messageText === "Client not initialized") {
+      reply.statusCode = 503;
+    } else if (messageText.startsWith("Missing ")) {
+      reply.statusCode = 400;
+    } else {
+      reply.statusCode = 500;
+    }
+    return reply.send({ error: messageText });
   }
 });
 

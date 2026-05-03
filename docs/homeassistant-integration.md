@@ -204,6 +204,52 @@ data:
     delete_for_everyone: false
 ```
 
+## Add-on message edit/delete endpoints
+
+The add-on now exposes direct HTTP endpoints in addition to websocket RPC:
+
+- `POST /api/v1/messages/edit`
+- `POST /api/v1/messages/delete`
+
+### HTTP: edit message
+
+Request body:
+
+```json
+{
+  "messageId": "true_12345@c.us_ABCDEF",
+  "message": "Updated text"
+}
+```
+
+Notes:
+
+- edit is restricted to self-sent messages
+- empty `message` is rejected
+
+### HTTP: delete message
+
+Request body:
+
+```json
+{
+  "messageId": "true_12345@c.us_ABCDEF",
+  "everyone": false
+}
+```
+
+Notes:
+
+- `everyone: false` means "delete for me"
+- set `everyone: true` to request delete-for-everyone semantics
+
+### WS RPC actions
+
+If you are already connected to `/api/v1/events/ws`, you can also use:
+
+- `action: "edit_message"` with params `{ "messageId": "...", "message": "..." }`
+- `action: "delete_message"` with params `{ "messageId": "...", "everyone": false }`
+
 ## Example automation: ping -> pong
 
 ```yaml
