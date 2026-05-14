@@ -28,11 +28,13 @@
   }
 
   .shell {
-    width: 100vw;
-    height: 100vh;
+    width: min(96vw, 120rem);
+    min-height: 18rem;
     display: grid;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: auto auto 1fr;
     background: var(--panel);
+    border: 1px solid var(--line);
+    margin: 0.45rem 0 0 0.45rem;
   }
 
   .header {
@@ -85,7 +87,7 @@
     background: #0e171d;
     display: none;
     gap: 0.6rem;
-    align-items: center;
+    align-items: flex-start;
     flex-wrap: wrap;
   }
 
@@ -95,7 +97,7 @@
 
   .group {
     display: inline-flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.35rem;
     flex-wrap: wrap;
   }
@@ -131,6 +133,7 @@
     padding: 0.28rem 0.45rem;
     min-width: 18rem;
     font-size: 0.78rem;
+    align-self: flex-start;
   }
 
   .search::placeholder {
@@ -142,6 +145,7 @@
     padding: 0.2rem 0.25rem;
     overflow-x: auto;
     overflow-y: auto;
+    height: min(70vh, 44rem);
     font-family:
       ui-monospace,
       SFMono-Regular,
@@ -156,15 +160,18 @@
   }
 
   .log-row {
-    display: grid;
-    grid-template-columns: auto auto auto auto auto auto;
-    gap: 0.38rem;
+    display: flex;
     align-items: baseline;
+    gap: 0.38rem;
     padding: 0.08rem 0.2rem;
     border-radius: 0.2rem;
     white-space: nowrap;
     width: max-content;
     min-width: 100%;
+  }
+
+  .log-row > * {
+    flex: 0 0 auto;
   }
 
   .log-row:hover {

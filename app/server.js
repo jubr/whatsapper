@@ -51,7 +51,7 @@ fastify.addHook("onRequest", (request, _reply, done) => {
 fastify.addHook("onResponse", (request, reply, done) => {
   const startedAt = Number.isFinite(request._logStartedAt) ? request._logStartedAt : Date.now();
   const durationMs = Date.now() - startedAt;
-  logServer("info", "HTTP", {
+  logServer("debug", "HTTP", {
     method: request.method,
     path: request.raw.url || request.url,
     status: reply.statusCode,
@@ -157,8 +157,19 @@ const getUiStatus = () => {
     qrSubtitle,
     qrDimmed: !qrNeedsAttention,
     canRestartHomeAssistant: canRestartHomeAssistant(),
+    canStoreRefresh: canRestartHomeAssistant(),
     generatedAt: new Date().toISOString(),
   };
+};
+
+const unwrapSupervisorPayloadData = (payload) => {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  if (payload.data && typeof payload.data === "object") {
+    return payload.data;
+  }
+  return payload;
 };
 
 const readResponseBody = async (response) => {
@@ -174,20 +185,24 @@ const readResponseBody = async (response) => {
   }
 };
 
-const requestHomeAssistantRestart = async () => {
+const supervisorHeaders = () => {
   const token = getSupervisorToken();
   if (!token) {
     throw new Error(
-      "Home Assistant restart is unavailable (missing SUPERVISOR_TOKEN). " +
+      "Supervisor API is unavailable (missing SUPERVISOR_TOKEN). " +
         "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
     );
   }
-  const headers = {
+  return {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
+};
+
+const requestHomeAssistantRestart = async () => {
+  const headers = supervisorHeaders();
   const attempts = [
-    { mode: "supervisor_core_restart", path: "/core/restart", body: null },
+    { mode: "supervisor_core_restart", path: "/core/restart", body: {} },
     {
       mode: "homeassistant_service_restart",
       path: "/core/api/services/homeassistant/restart",
@@ -221,6 +236,112 @@ const requestHomeAssistantRestart = async () => {
     }
   }
   throw new Error(`Failed to restart Home Assistant: ${failures.join("; ")}`);
+};
+
+const triggerStoreRefresh = async () => {
+  const headers = supervisorHeaders();
+  const response = await fetch(`${SUPERVISOR_BASE_URL}/store/reload`, {
+    method: "POST",
+    headers,
+  });
+  if (!response.ok) {
+    const body = await readResponseBody(response);
+    throw new Error(
+      `Store refresh failed (HTTP ${response.status}) ${
+        body && body.raw ? body.raw : ""
+      }`.trim(),
+    );
+  }
+  return {
+    status: response.status,
+    payload: await readResponseBody(response),
+  };
+};
+
+const triggerAddonUpdateCheck = async (addonSlug) => {
+  const headers = supervisorHeaders();
+  const response = await fetch(`${SUPERVISOR_BASE_URL}/addons/${addonSlug}/info`, {
+    method: "GET",
+    headers,
+  });
+  if (!response.ok) {
+    const body = await readResponseBody(response);
+    throw new Error(
+      `Addon info fetch failed (HTTP ${response.status}) ${
+        body && body.raw ? body.raw : ""
+      }`.trim(),
+    );
+  }
+  const payload = await readResponseBody(response);
+  const data = payload && typeof payload === "object" && payload.data ? payload.data : payload;
+  const updateAvailable = Boolean(data?.update_available);
+  const latestVersion =
+    typeof data?.version_latest === "string" ? data.version_latest : null;
+  const currentVersion =
+    typeof data?.version === "string" ? data.version : null;
+  return {
+    status: response.status,
+    updateAvailable,
+    latestVersion,
+    currentVersion,
+    payload,
+  };
+};
+
+const requestStoreRefreshAndCheckUpdates = async () => {
+  const token = getSupervisorToken();
+  if (!token) {
+    throw new Error(
+      "Store refresh is unavailable (missing SUPERVISOR_TOKEN). " +
+        "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
+    );
+  }
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+
+  const reloadResponse = await fetch(`${SUPERVISOR_BASE_URL}/store/reload`, {
+    method: "POST",
+    headers,
+  });
+  const reloadPayload = await readResponseBody(reloadResponse);
+  if (!reloadResponse.ok) {
+    throw new Error(
+      `Store refresh failed with HTTP ${reloadResponse.status}${
+        reloadPayload && reloadPayload.raw ? `: ${reloadPayload.raw}` : ""
+      }`,
+    );
+  }
+
+  const addonSlug = runtimeIdentity.appName || "whatsapper";
+  const addonInfoResponse = await fetch(
+    `${SUPERVISOR_BASE_URL}/addons/${encodeURIComponent(addonSlug)}/info`,
+    {
+      method: "GET",
+      headers,
+    },
+  );
+  const addonInfoPayload = await readResponseBody(addonInfoResponse);
+  if (!addonInfoResponse.ok) {
+    throw new Error(
+      `Add-on info check failed with HTTP ${addonInfoResponse.status}${
+        addonInfoPayload && addonInfoPayload.raw ? `: ${addonInfoPayload.raw}` : ""
+      }`,
+    );
+  }
+
+  const addonData = unwrapSupervisorPayloadData(addonInfoPayload) || {};
+  return {
+    storeReloadStatus: reloadResponse.status,
+    addon: {
+      slug: addonSlug,
+      version: addonData.version ?? null,
+      latestVersion: addonData.version_latest ?? addonData.latest_version ?? null,
+      updateAvailable: Boolean(addonData.update_available),
+      autoUpdate: addonData.auto_update ?? null,
+    },
+  };
 };
 
 const wsStats = {
@@ -264,7 +385,7 @@ const updateIntegrationVersionFromWs = (client, version, details = {}) => {
   integrationVersionFromWs = normalizedVersion;
   integrationVersionFromWsAt = new Date().toISOString();
   integrationVersionFromWsClientId = client?.id || null;
-  logServer("info", "Integration version updated via events ws", {
+  logServer("debug", "Integration version updated via events ws", {
     clientId: integrationVersionFromWsClientId || "-",
     integrationVersion: normalizedVersion,
     source: "events-ws",
@@ -310,7 +431,7 @@ const registerWsClient = ({ channel, socket, request, selectedEvents = null }) =
     wsStats.runtimeConnectionsAccepted += 1;
   }
 
-  logServer("info", "WebSocket connected", {
+  logServer("debug", "Connected", {
     channel: client.channel,
     clientId: client.id,
     remoteAddress: client.remoteAddress || "-",
@@ -330,7 +451,7 @@ const unregisterWsClient = (client, reason = "unknown") => {
   }
 
   wsStats.totalConnectionsClosed += 1;
-  logServer("info", "WebSocket disconnected", {
+  logServer("debug", "Disconnected", {
     channel: client.channel,
     clientId: client.id,
     reason,
@@ -366,7 +487,7 @@ const logWsTraffic = ({ client, direction, payload, messageType = null, parsedPa
     details.rpcOk = parsedPayload.ok === false ? "false" : "true";
   }
   // Keep WS traffic logs concise; topic/direction already carry the useful context.
-  logServer("info", "ws", details);
+  logServer("trace", "ws", details);
 };
 
 const markWsInbound = (client, rawPayload, parsedPayload = null) => {
@@ -409,7 +530,7 @@ const sendWsPayload = (client, payload, options = {}) => {
     }
     return true;
   } catch (error) {
-    logServer("warn", "Failed to send websocket payload", {
+    logServer("warn", "Send payload failed", {
       channel: client.channel,
       clientId: client.id,
       error: String(error?.message || error),
@@ -478,6 +599,78 @@ const ensureActiveClient = () => {
     return null;
   }
   return getClient();
+};
+
+const toBooleanFlag = (value) =>
+  value === true || value === "true" || value === 1 || value === "1";
+
+const getMessageByIdOrThrow = async (messageId) => {
+  const normalizedMessageId = typeof messageId === "string" ? messageId.trim() : "";
+  if (!normalizedMessageId) {
+    throw new Error("Missing messageId");
+  }
+  const activeClient = ensureActiveClient();
+  if (!activeClient) {
+    throw new Error("Client not initialized");
+  }
+  if (typeof activeClient.getMessageById !== "function") {
+    throw new Error("Client does not support getMessageById");
+  }
+  const targetMessage = await activeClient.getMessageById(normalizedMessageId);
+  if (!targetMessage) {
+    throw new Error(`Message '${normalizedMessageId}' not found`);
+  }
+  return { targetMessage, messageId: normalizedMessageId };
+};
+
+const editMessageById = async ({ messageId, message }) => {
+  const nextMessage = typeof message === "string" ? message : "";
+  if (!nextMessage.trim()) {
+    throw new Error("Missing message");
+  }
+  const { targetMessage, messageId: normalizedMessageId } = await getMessageByIdOrThrow(messageId);
+  if (targetMessage.fromMe !== true) {
+    throw new Error("Can only edit self-sent messages");
+  }
+  if (typeof targetMessage.edit !== "function") {
+    throw new Error("Target message does not support edit()");
+  }
+  logServer("debug", "edit_message params", {
+    messageId: normalizedMessageId,
+    messageLength: nextMessage.length,
+  });
+  await targetMessage.edit(nextMessage);
+  logServer("debug", "edit_message applied", {
+    messageId: normalizedMessageId,
+    messageLength: nextMessage.length,
+  });
+  return {
+    messageId: normalizedMessageId,
+    edited: true,
+  };
+};
+
+const deleteMessageById = async ({ messageId, everyone = false }) => {
+  const shouldDeleteForEveryone = toBooleanFlag(everyone);
+  const { targetMessage, messageId: normalizedMessageId } = await getMessageByIdOrThrow(messageId);
+  if (typeof targetMessage.delete !== "function") {
+    throw new Error("Target message does not support delete()");
+  }
+  logServer("debug", "delete_message params", {
+    messageId: normalizedMessageId,
+    everyone: shouldDeleteForEveryone,
+  });
+  await targetMessage.delete(shouldDeleteForEveryone);
+  const deleteMode = shouldDeleteForEveryone ? "everyone" : "for_me";
+  logServer("debug", "delete_message applied", {
+    messageId: normalizedMessageId,
+    deleteMode,
+  });
+  return {
+    messageId: normalizedMessageId,
+    deleted: true,
+    deleteMode,
+  };
 };
 
 const listChats = async () => {
@@ -641,11 +834,7 @@ const handleWsRpcRequest = async (rpcPayload) => {
     case "react_message": {
       const messageId = typeof params.messageId === "string" ? params.messageId.trim() : "";
       const reaction = typeof params.reaction === "string" ? params.reaction.trim() : "";
-      const toggle =
-        params.toggle === true ||
-        params.toggle === "true" ||
-        params.toggle === 1 ||
-        params.toggle === "1";
+      const toggle = toBooleanFlag(params.toggle);
       if (!messageId) {
         throw new Error("Missing params.messageId for react_message");
       }
@@ -697,6 +886,23 @@ const handleWsRpcRequest = async (rpcPayload) => {
         removed: shouldToggleOff,
         reacted: true,
       };
+    }
+
+    case "edit_message": {
+      if (typeof params.messageId !== "string" || !params.messageId.trim()) {
+        throw new Error("Missing params.messageId for edit_message");
+      }
+      if (typeof params.message !== "string" || !params.message.trim()) {
+        throw new Error("Missing params.message for edit_message");
+      }
+      return editMessageById({ messageId: params.messageId, message: params.message });
+    }
+
+    case "delete_message": {
+      if (typeof params.messageId !== "string" || !params.messageId.trim()) {
+        throw new Error("Missing params.messageId for delete_message");
+      }
+      return deleteMessageById({ messageId: params.messageId, everyone: params.everyone });
     }
 
     default:
@@ -809,6 +1015,58 @@ fastify.post("/api/v1/send-test", async function handler(request, reply) {
   }
 });
 
+fastify.post("/api/v1/messages/edit", async function handler(request, reply) {
+  const messageId =
+    typeof request.body?.messageId === "string" ? request.body.messageId.trim() : "";
+  const message = typeof request.body?.message === "string" ? request.body.message : "";
+  if (!messageId) {
+    reply.statusCode = 400;
+    return reply.send({ error: "Missing messageId" });
+  }
+  if (!message.trim()) {
+    reply.statusCode = 400;
+    return reply.send({ error: "Missing message" });
+  }
+  try {
+    const result = await editMessageById({ messageId, message });
+    return reply.send({ ok: true, ...result });
+  } catch (error) {
+    const messageText = String(error?.message || error);
+    if (messageText === "Client not initialized") {
+      reply.statusCode = 503;
+    } else if (messageText.startsWith("Missing ")) {
+      reply.statusCode = 400;
+    } else {
+      reply.statusCode = 500;
+    }
+    return reply.send({ error: messageText });
+  }
+});
+
+fastify.post("/api/v1/messages/delete", async function handler(request, reply) {
+  const messageId =
+    typeof request.body?.messageId === "string" ? request.body.messageId.trim() : "";
+  const everyone = request.body?.everyone;
+  if (!messageId) {
+    reply.statusCode = 400;
+    return reply.send({ error: "Missing messageId" });
+  }
+  try {
+    const result = await deleteMessageById({ messageId, everyone });
+    return reply.send({ ok: true, ...result });
+  } catch (error) {
+    const messageText = String(error?.message || error);
+    if (messageText === "Client not initialized") {
+      reply.statusCode = 503;
+    } else if (messageText.startsWith("Missing ")) {
+      reply.statusCode = 400;
+    } else {
+      reply.statusCode = 500;
+    }
+    return reply.send({ error: messageText });
+  }
+});
+
 fastify.get("/qr", function handler(_, reply) {
   const qrPayload = getQr();
   return reply.view("qr.ejs", {
@@ -907,6 +1165,30 @@ fastify.post("/api/v1/ha/restart", async function handler(_, reply) {
     logServer("warn", "Home Assistant restart requested from UI", {
       mode: result.mode,
       status: result.status,
+    });
+    return reply.send({ ok: true, result });
+  } catch (error) {
+    reply.statusCode = 502;
+    return reply.send({ ok: false, error: String(error?.message || error) });
+  }
+});
+
+fastify.post("/api/v1/ha/store-refresh", async function handler(_, reply) {
+  if (!canRestartHomeAssistant()) {
+    reply.statusCode = 503;
+    return reply.send({
+      ok: false,
+      error:
+        "Store refresh is unavailable in this runtime. " +
+        "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
+    });
+  }
+  try {
+    const result = await requestStoreRefreshAndCheckUpdates();
+    logServer("info", "Store refresh requested from UI", {
+      addon: result?.addon?.slug || runtimeIdentity.appName || "-",
+      updateAvailable: String(Boolean(result?.addon?.updateAvailable)),
+      autoUpdate: String(Boolean(result?.addon?.autoUpdate)),
     });
     return reply.send({ ok: true, result });
   } catch (error) {
@@ -1132,7 +1414,7 @@ fastify.after(() => {
             const requestId = typeof payload.requestId === "string" ? payload.requestId : null;
             const rpcParams =
               payload.params && typeof payload.params === "object" ? payload.params : {};
-            logServer("info", "RPC request", {
+            logServer("debug", "RPC request", {
               channel: "events",
               clientId: client.id,
               action: payload.action || "unknown",
@@ -1145,7 +1427,7 @@ fastify.after(() => {
             try {
               const result = await handleWsRpcRequest(payload);
               wsStats.rpcResponses += 1;
-              logServer("info", "RPC response", {
+              logServer("debug", "RPC response", {
                 channel: "events",
                 clientId: client.id,
                 action: payload.action || "unknown",

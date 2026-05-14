@@ -162,6 +162,94 @@ GET /api/v1/chats?name=<target_name>
 
 If lookup is ambiguous (multiple matches) the send is aborted and a log error is emitted, so messages are not sent to the wrong chat.
 
+## Notify service: edit and delete operations
+
+`notify.whatsapper` / `notify.whatsappur` now support message edit/delete operations through
+the same websocket RPC channel used for send/reaction.
+
+Use these keys under `data:`:
+
+- `data.edit_message_id`: target message ID to edit
+- `data.delete_message_id`: target message ID to delete
+- `data.delete_for_everyone`: optional boolean (default `false`, i.e. delete for me)
+
+Behavior:
+
+- If `edit_message_id` is present, the notify call routes to `edit_message` RPC.
+  - The new text is taken from the composed notify message body (title + message).
+  - `target`/chat resolution is not required.
+- If `delete_message_id` is present, the notify call routes to `delete_message` RPC.
+  - `delete_for_everyone` controls delete mode.
+  - `target`/chat resolution is not required.
+- Edit/delete routing has priority over reaction/send routing.
+
+Example: edit a previously sent message
+
+```yaml
+service: notify.whatsapper
+data:
+  message: "Updated content"
+  data:
+    edit_message_id: "true_12345@c.us_ABCDEF"
+```
+
+Example: delete a message for me
+
+```yaml
+service: notify.whatsapper
+data:
+  message: "ignored for delete route"
+  data:
+    delete_message_id: "true_12345@c.us_ABCDEF"
+    delete_for_everyone: false
+```
+
+## Add-on message edit/delete endpoints
+
+The add-on now exposes direct HTTP endpoints in addition to websocket RPC:
+
+- `POST /api/v1/messages/edit`
+- `POST /api/v1/messages/delete`
+
+### HTTP: edit message
+
+Request body:
+
+```json
+{
+  "messageId": "true_12345@c.us_ABCDEF",
+  "message": "Updated text"
+}
+```
+
+Notes:
+
+- edit is restricted to self-sent messages
+- empty `message` is rejected
+
+### HTTP: delete message
+
+Request body:
+
+```json
+{
+  "messageId": "true_12345@c.us_ABCDEF",
+  "everyone": false
+}
+```
+
+Notes:
+
+- `everyone: false` means "delete for me"
+- set `everyone: true` to request delete-for-everyone semantics
+
+### WS RPC actions
+
+If you are already connected to `/api/v1/events/ws`, you can also use:
+
+- `action: "edit_message"` with params `{ "messageId": "...", "message": "..." }`
+- `action: "delete_message"` with params `{ "messageId": "...", "everyone": false }`
+
 ## Example automation: ping -> pong
 
 ```yaml

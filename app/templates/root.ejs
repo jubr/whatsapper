@@ -147,6 +147,10 @@
     background: rgba(17, 27, 33, 0.65);
   }
 
+  .chat-row.busy-row {
+    opacity: 0.86;
+  }
+
   .chat-row.inactive-row {
     opacity: 0.72;
   }
@@ -566,6 +570,41 @@
       return payload;
     };
 
+    const requestStoreRefresh = async () => {
+      const response = await fetch(`${basePath}api/v1/ha/store/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || `store refresh failed (${response.status})`);
+      }
+      return payload;
+    };
+
+    const requestStoreUpdateCheck = async () => {
+      const response = await fetch(`${basePath}api/v1/ha/store/check-updates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || `update check failed (${response.status})`);
+      }
+      return payload;
+    };
+
+    const openHaDeveloperTools = () => {
+      const origin = window.location.origin;
+      try {
+        // For add-on ingress paths, jump to HA root and open Dev Tools YAML tab.
+        const url = new URL("/developer-tools/yaml", origin);
+        window.location.href = url.toString();
+      } catch (_) {
+        window.location.href = `${origin}/developer-tools/yaml`;
+      }
+    };
+
     const setIntegrationRowAction = (enabled, canRestart) => {
       const row = document.querySelector('[data-ui-row="integrationVersion"]');
       if (!row) {
@@ -581,7 +620,10 @@
       }
       row.onclick = async () => {
         if (!canRestart) {
-          window.alert("Home Assistant restart is not available in this runtime.");
+          window.alert(
+            "Home Assistant restart is not available in this runtime. Redirecting to Developer Tools so you can restart manually.",
+          );
+          openHaDeveloperTools();
           return;
         }
         const confirmed = window.confirm(
@@ -594,7 +636,49 @@
           await requestHaRestart();
           window.alert("Home Assistant restart requested.");
         } catch (error) {
-          window.alert(`Failed to request Home Assistant restart: ${error.message}`);
+          window.alert(
+            `Failed to request Home Assistant restart: ${error.message}\nOpening Developer Tools so you can restart manually.`,
+          );
+          openHaDeveloperTools();
+        }
+      };
+    };
+
+    const setAppVersionRowAction = (enabled, canRefreshStore) => {
+      const row = document.querySelector('[data-ui-row="appVersion"]');
+      if (!row) {
+        return;
+      }
+      row.classList.toggle("actionable-row", Boolean(enabled));
+      row.classList.toggle("busy-row", false);
+      row.title = enabled
+        ? "Tap to refresh add-on store and check updates"
+        : "Whatsapper app version";
+      row.onclick = null;
+      if (!enabled) {
+        return;
+      }
+      row.onclick = async () => {
+        if (!canRefreshStore) {
+          window.alert(
+            "Store refresh is not available in this runtime. Enable 'hassio_api: true' and restart the add-on.",
+          );
+          return;
+        }
+        row.classList.add("busy-row");
+        const originalTitle = row.title;
+        row.title = "Refreshing store and checking updates...";
+        try {
+          const refresh = await requestStoreRefresh();
+          const check = await requestStoreUpdateCheck();
+          window.alert(
+            `Store refresh/check complete.\nrefresh=${refresh.result?.mode || "ok"}\ncheck=${check.result?.mode || "ok"}\nIf auto-update is enabled, update flow may start now.`,
+          );
+        } catch (error) {
+          window.alert(`Store refresh/check failed: ${error.message}`);
+        } finally {
+          row.classList.remove("busy-row");
+          row.title = originalTitle;
         }
       };
     };
@@ -632,13 +716,24 @@
         pinned: true,
         dimmed: false,
       });
+      setAppVersionRowAction(true, Boolean(status.canUseSupervisorApi));
     };
 
+    let uiStatusReconnectTimer = null;
+    let uiStatusSocket = null;
+
     const connectUiStatusWs = () => {
+      if (
+        uiStatusSocket &&
+        (uiStatusSocket.readyState === WebSocket.OPEN || uiStatusSocket.readyState === WebSocket.CONNECTING)
+      ) {
+        return;
+      }
       const protocol = location.protocol === "https:" ? "wss" : "ws";
       const wsUrl = new URL(`${basePath}api/v1/ui/status`, location.origin);
       wsUrl.protocol = `${protocol}:`;
       const socket = new WebSocket(wsUrl.toString());
+      uiStatusSocket = socket;
 
       socket.addEventListener("message", (event) => {
         try {
@@ -651,8 +746,21 @@
         }
       });
 
+      socket.addEventListener("open", () => {
+        if (uiStatusReconnectTimer) {
+          clearTimeout(uiStatusReconnectTimer);
+          uiStatusReconnectTimer = null;
+        }
+      });
+
       socket.addEventListener("close", () => {
-        setTimeout(connectUiStatusWs, 2000);
+        if (uiStatusSocket === socket) {
+          uiStatusSocket = null;
+        }
+        if (uiStatusReconnectTimer) {
+          clearTimeout(uiStatusReconnectTimer);
+        }
+        uiStatusReconnectTimer = setTimeout(connectUiStatusWs, 2000);
       });
 
       socket.addEventListener("error", () => {
@@ -665,5 +773,17 @@
     };
 
     connectUiStatusWs();
+    window.addEventListener("beforeunload", () => {
+      if (uiStatusReconnectTimer) {
+        clearTimeout(uiStatusReconnectTimer);
+      }
+      if (uiStatusSocket) {
+        try {
+          uiStatusSocket.close();
+        } catch (_) {
+          // ignore
+        }
+      }
+    });
   })();
 </script>

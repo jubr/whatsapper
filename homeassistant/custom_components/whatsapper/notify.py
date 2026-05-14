@@ -37,6 +37,9 @@ ATTR_REPLY_TO_MESSAGE_ID = "reply_to_message_id"
 ATTR_REACTION_TOGGLE = "reaction_toggle"
 ATTR_REACTION_ADD = "reaction_add"
 ATTR_REACTION = "reaction"
+ATTR_EDIT_MESSAGE_ID = "edit_message_id"
+ATTR_DELETE_MESSAGE_ID = "delete_message_id"
+ATTR_DELETE_FOR_EVERYONE = "delete_for_everyone"
 DEFAULT_WS_PATH = "/api/v1/events/ws"
 
 
@@ -94,6 +97,14 @@ class WhatsapperNotificationService(BaseNotificationService):
             if normalized in ("0", "false", "no", "off", ""):
                 return False
         return default
+
+    @staticmethod
+    def _extract_message_id(value: Any) -> str | None:
+        if isinstance(value, str):
+            message_id = value.strip()
+            if message_id:
+                return message_id
+        return None
 
     @staticmethod
     def _extract_reaction_candidate(value: str | None) -> str | None:
@@ -244,12 +255,18 @@ class WhatsapperNotificationService(BaseNotificationService):
         try:
             data = kwargs.get(ATTR_DATA)
             reply_to_message_id = None
+            edit_message_id = None
+            delete_message_id = None
+            delete_for_everyone = False
             reaction_toggle = False
             reaction_add = None
             if isinstance(data, dict):
                 reply_candidate = data.get(ATTR_REPLY_TO_MESSAGE_ID)
                 if isinstance(reply_candidate, str) and reply_candidate.strip():
                     reply_to_message_id = reply_candidate.strip()
+                edit_message_id = self._extract_message_id(data.get(ATTR_EDIT_MESSAGE_ID))
+                delete_message_id = self._extract_message_id(data.get(ATTR_DELETE_MESSAGE_ID))
+                delete_for_everyone = self._to_bool(data.get(ATTR_DELETE_FOR_EVERYONE), False)
                 reaction_toggle = self._to_bool(data.get(ATTR_REACTION_TOGGLE), False)
                 explicit_reaction = data.get(ATTR_REACTION_ADD)
                 if explicit_reaction is None:
@@ -267,6 +284,13 @@ class WhatsapperNotificationService(BaseNotificationService):
                 top_level_reply = kwargs.get(ATTR_REPLY_TO_MESSAGE_ID)
                 if isinstance(top_level_reply, str) and top_level_reply.strip():
                     reply_to_message_id = top_level_reply.strip()
+
+            if not edit_message_id:
+                edit_message_id = self._extract_message_id(kwargs.get(ATTR_EDIT_MESSAGE_ID))
+            if not delete_message_id:
+                delete_message_id = self._extract_message_id(kwargs.get(ATTR_DELETE_MESSAGE_ID))
+            if not delete_for_everyone:
+                delete_for_everyone = self._to_bool(kwargs.get(ATTR_DELETE_FOR_EVERYONE), False)
 
             if reaction_add is None:
                 top_level_reaction = kwargs.get(ATTR_REACTION_ADD)
@@ -297,6 +321,42 @@ class WhatsapperNotificationService(BaseNotificationService):
                 len(msg.strip()),
                 reaction_toggle,
             )
+            if edit_message_id:
+                if not msg.strip():
+                    _LOGGER.warning(
+                        "Notify route: edit_message skipped because message content is empty | message_id=%s",
+                        edit_message_id,
+                    )
+                    return
+                _LOGGER.info(
+                    "Notify route: edit_message | message_id=%s message_len=%d",
+                    edit_message_id,
+                    len(msg),
+                )
+                await self._ws_rpc_request(
+                    "edit_message",
+                    {
+                        "messageId": edit_message_id,
+                        "message": msg,
+                    },
+                )
+                return
+
+            if delete_message_id:
+                _LOGGER.info(
+                    "Notify route: delete_message | message_id=%s everyone=%s",
+                    delete_message_id,
+                    delete_for_everyone,
+                )
+                await self._ws_rpc_request(
+                    "delete_message",
+                    {
+                        "messageId": delete_message_id,
+                        "everyone": delete_for_everyone,
+                    },
+                )
+                return
+
             # Special behavior:
             # If explicit data.reaction_add is provided, or payload is a single
             # emoji-like reaction, and includes reply_to_message_id,
