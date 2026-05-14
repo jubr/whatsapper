@@ -74,6 +74,7 @@ max: 10
 
 trigger_variables:
   input_wa_service_name: !input wa_service_name
+  input_chat_name: !input chat_name
   input_event_type: "{{ input_wa_service_name ~ '_message' }}"
 
 variables:
@@ -123,6 +124,8 @@ variables:
 trigger:
   - platform: event
     event_type: "{{ input_event_type }}"
+    event_data:
+      chat_name: "{{ input_chat_name }}"
 
 condition:
   - condition: template
