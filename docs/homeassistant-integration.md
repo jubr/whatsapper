@@ -249,6 +249,47 @@ If you are already connected to `/api/v1/events/ws`, you can also use:
 
 - `action: "edit_message"` with params `{ "messageId": "...", "message": "..." }`
 - `action: "delete_message"` with params `{ "messageId": "...", "everyone": false }`
+- `action: "list_messages"` with params:
+  - required: `{ "chatId": "12345@g.us" }`
+  - optional filters: `limit` (1-200), `fromMe` (boolean), `bodyPrefix` (string)
+
+`list_messages` returns:
+
+- `chatId`
+- `chatName`
+- `requestedLimit`
+- `count`
+- `messages[]` (each item includes `id`, `chatId`, `from`, `to`, `author`, `fromMe`, `body`, `type`, `timestamp`, `hasMedia`)
+
+## Home Assistant service: `whatsapper.channel_msg_list`
+
+The integration now exposes a response-capable service for automations/scripts:
+
+```yaml
+action: whatsapper.channel_msg_list
+data:
+  target: "Family Group"
+  limit: 25
+  from_me: true
+  body_prefix: "Heartbeat "
+response_variable: recent_messages
+```
+
+Target resolution accepts one of:
+
+- `chat_id` (direct WhatsApp id, for example `12345@g.us`)
+- `chat_name` (resolved through websocket RPC)
+- `target` (string or one-item list, same semantics as notify target)
+
+The returned response payload includes:
+
+- `chat_id`
+- `chat_name`
+- `count`
+- `requested_limit`
+- `messages`
+
+This service is used internally by the heartbeat monitor to fetch recent heartbeat messages reliably from channels/chats.
 
 ## Example automation: ping -> pong
 

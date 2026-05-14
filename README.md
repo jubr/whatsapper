@@ -118,6 +118,24 @@ Home Assistant notify targets now accept either:
 
 Name targets are resolved through `GET /api/v1/chats?name=<name>`.
 
+WebSocket RPC also supports `list_messages` for channel/chat message listing:
+
+```json
+{
+  "type": "rpc",
+  "action": "list_messages",
+  "params": {
+    "chatId": "12345@g.us",
+    "limit": 20,
+    "fromMe": true,
+    "bodyPrefix": "Heartbeat "
+  }
+}
+```
+
+In Home Assistant, use `whatsapper.channel_msg_list` in automations/scripts with `response_variable`
+to consume the returned message list.
+
 ## Legacy command endpoints
 
 Forward any `Client` method:

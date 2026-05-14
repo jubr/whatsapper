@@ -710,6 +710,88 @@ const listChats = async () => {
   }));
 };
 
+const toIntegerWithinRange = (value, { defaultValue, min, max }) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return defaultValue;
+  }
+  const normalized = Math.trunc(parsed);
+  if (normalized < min) {
+    return min;
+  }
+  if (normalized > max) {
+    return max;
+  }
+  return normalized;
+};
+
+const serializeChatMessage = (message, chatId) => {
+  const rawTimestamp = Number(message?.timestamp);
+  return {
+    id: message?.id?._serialized || null,
+    chatId,
+    from: message?.from || null,
+    to: message?.to || null,
+    author: message?.author || null,
+    fromMe: Boolean(message?.fromMe),
+    body: message?.body || "",
+    type: message?.type || "unknown",
+    timestamp: Number.isFinite(rawTimestamp) ? rawTimestamp : null,
+    hasMedia: Boolean(message?.hasMedia),
+  };
+};
+
+const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" }) => {
+  const normalizedChatId = typeof chatId === "string" ? chatId.trim() : "";
+  if (!normalizedChatId) {
+    throw new Error("Missing chatId");
+  }
+  const activeClient = ensureActiveClient();
+  if (!activeClient) {
+    throw new Error("Client not initialized");
+  }
+  if (typeof activeClient.getChatById !== "function") {
+    throw new Error("Client does not support getChatById");
+  }
+
+  const normalizedLimit = toIntegerWithinRange(limit, {
+    defaultValue: 20,
+    min: 1,
+    max: 200,
+  });
+  const normalizedBodyPrefix = typeof bodyPrefix === "string" ? bodyPrefix : "";
+  const chat = await activeClient.getChatById(normalizedChatId);
+  if (!chat) {
+    throw new Error(`Chat '${normalizedChatId}' not found`);
+  }
+  if (typeof chat.fetchMessages !== "function") {
+    throw new Error(`Chat '${normalizedChatId}' does not support fetchMessages`);
+  }
+
+  const fetchedMessages = await chat.fetchMessages({ limit: normalizedLimit });
+  let filteredMessages = Array.isArray(fetchedMessages) ? fetchedMessages : [];
+  if (typeof fromMe === "boolean") {
+    filteredMessages = filteredMessages.filter((message) => Boolean(message?.fromMe) === fromMe);
+  }
+  if (normalizedBodyPrefix) {
+    filteredMessages = filteredMessages.filter(
+      (message) =>
+        typeof message?.body === "string" && message.body.startsWith(normalizedBodyPrefix),
+    );
+  }
+
+  return {
+    chatId: normalizedChatId,
+    chatName:
+      (typeof chat.name === "string" && chat.name.trim()) ||
+      (typeof chat.formattedTitle === "string" && chat.formattedTitle.trim()) ||
+      null,
+    requestedLimit: normalizedLimit,
+    count: filteredMessages.length,
+    messages: filteredMessages.map((message) => serializeChatMessage(message, normalizedChatId)),
+  };
+};
+
 const parseWsEventSelection = (requestedEvents) => {
   if (requestedEvents === undefined || requestedEvents === null || requestedEvents === "") {
     return { selectedEvents: new Set(["message"]) };
@@ -903,6 +985,28 @@ const handleWsRpcRequest = async (rpcPayload) => {
         throw new Error("Missing params.messageId for delete_message");
       }
       return deleteMessageById({ messageId: params.messageId, everyone: params.everyone });
+    }
+
+    case "list_messages": {
+      const chatId = typeof params.chatId === "string" ? params.chatId.trim() : "";
+      if (!chatId) {
+        throw new Error("Missing params.chatId for list_messages");
+      }
+      const hasFromMeFilter = Object.prototype.hasOwnProperty.call(params, "fromMe");
+      const fromMe = hasFromMeFilter ? toBooleanFlag(params.fromMe) : undefined;
+      const bodyPrefix = typeof params.bodyPrefix === "string" ? params.bodyPrefix : "";
+      logServer("debug", "RPC list_messages params", {
+        chatId: chatId || "-",
+        limit: params.limit,
+        fromMe: hasFromMeFilter ? String(fromMe) : "-",
+        hasBodyPrefix: String(Boolean(bodyPrefix)),
+      });
+      return listChatMessages({
+        chatId,
+        limit: params.limit,
+        fromMe,
+        bodyPrefix,
+      });
     }
 
     default:

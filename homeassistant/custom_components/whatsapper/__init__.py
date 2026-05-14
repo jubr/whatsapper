@@ -12,13 +12,19 @@ from aiohttp import WSMsgType
 from homeassistant.config_entries import ConfigEntry
 import homeassistant.helpers.config_validation as cv
 from homeassistant.const import CONF_NAME, EVENT_HOMEASSISTANT_STOP, EVENT_HOMEASSISTANT_STARTED
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.discovery import async_load_platform
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant, ServiceCall, callback
+try:
+    from homeassistant.core import SupportsResponse
+except ImportError:  # pragma: no cover - backwards compatibility fallback
+    SupportsResponse = None
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.loader import async_get_integration
 from .auto_host_port import async_detect_host_port
 from .heartbeat import async_setup_heartbeat
+from .rpc import async_resolve_chat_id, async_ws_rpc_request
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,6 +56,16 @@ STOP_LISTENER_REGISTERED_KEY = "_stop_listener_registered"
 LISTENER_SETTINGS_KEY = "_listener_settings"
 NOTIFY_PLATFORM_LOADED_KEY = "_notify_platform_loaded"
 DEFAULT_NOTIFY_SERVICE_NAME = DOMAIN
+SERVICE_CHANNEL_MSG_LIST = "channel_msg_list"
+SERVICE_CHANNEL_MSG_LIST_REGISTERED_KEY = "_channel_msg_list_registered"
+ATTR_TARGET = "target"
+ATTR_CHAT_ID = "chat_id"
+ATTR_CHAT_NAME = "chat_name"
+ATTR_LIMIT = "limit"
+ATTR_FROM_ME = "from_me"
+ATTR_BODY_PREFIX = "body_prefix"
+DEFAULT_LIST_MESSAGES_LIMIT = 20
+MAX_LIST_MESSAGES_LIMIT = 200
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -61,6 +77,22 @@ CONFIG_SCHEMA = vol.Schema(
         )
     },
     extra=vol.ALLOW_EXTRA,
+)
+
+SERVICE_CHANNEL_MSG_LIST_SCHEMA = vol.Schema(
+    {
+        vol.Optional(ATTR_TARGET): vol.Any(cv.string, [cv.string]),
+        vol.Optional(ATTR_CHAT_ID): cv.string,
+        vol.Optional(ATTR_CHAT_NAME): cv.string,
+        vol.Optional(ATTR_LIMIT, default=DEFAULT_LIST_MESSAGES_LIMIT): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=MAX_LIST_MESSAGES_LIMIT)
+        ),
+        vol.Optional(ATTR_FROM_ME): cv.boolean,
+        vol.Optional(ATTR_BODY_PREFIX): cv.string,
+        vol.Optional(CONF_HOST_PORT): cv.string,
+        vol.Optional(CONF_WS_PATH): cv.string,
+    },
+    extra=vol.PREVENT_EXTRA,
 )
 
 
@@ -84,6 +116,122 @@ def _normalize_ws_path(value: Any) -> str:
         if stripped:
             return stripped if stripped.startswith("/") else f"/{stripped}"
     return DEFAULT_WS_PATH
+
+
+def _extract_target_from_service_data(value: Any) -> str | None:
+    if isinstance(value, str):
+        normalized = value.strip()
+        return normalized or None
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, str):
+                normalized = item.strip()
+                if normalized:
+                    return normalized
+    return None
+
+
+def _get_listener_host_port_ws_path(hass: HomeAssistant) -> tuple[str | None, str]:
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    settings = domain_data.get(LISTENER_SETTINGS_KEY)
+    if (
+        isinstance(settings, tuple)
+        and len(settings) == 2
+    ):
+        return (
+            _normalize_host_port(settings[0]),
+            _normalize_ws_path(settings[1]),
+        )
+    return (None, DEFAULT_WS_PATH)
+
+
+def _ensure_channel_msg_list_service(hass: HomeAssistant) -> None:
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if domain_data.get(SERVICE_CHANNEL_MSG_LIST_REGISTERED_KEY):
+        return
+
+    async def _async_channel_msg_list_service(call: ServiceCall) -> dict[str, Any]:
+        service_data = dict(call.data or {})
+        listener_host_port, listener_ws_path = _get_listener_host_port_ws_path(hass)
+        configured_host_port = (
+            _normalize_host_port(service_data.get(CONF_HOST_PORT))
+            or listener_host_port
+        )
+        ws_path = _normalize_ws_path(service_data.get(CONF_WS_PATH, listener_ws_path))
+
+        requested_target = (
+            _extract_target_from_service_data(service_data.get(ATTR_CHAT_ID))
+            or _extract_target_from_service_data(service_data.get(ATTR_TARGET))
+            or _extract_target_from_service_data(service_data.get(ATTR_CHAT_NAME))
+        )
+        if not requested_target:
+            raise HomeAssistantError(
+                "channel_msg_list requires chat_id, chat_name or target"
+            )
+
+        chat_id = await async_resolve_chat_id(
+            hass,
+            target=requested_target,
+            configured_host_port=configured_host_port,
+            ws_path=ws_path,
+        )
+
+        rpc_params: dict[str, Any] = {
+            "chatId": chat_id,
+            "limit": int(service_data.get(ATTR_LIMIT, DEFAULT_LIST_MESSAGES_LIMIT)),
+        }
+        if ATTR_FROM_ME in service_data:
+            rpc_params["fromMe"] = bool(service_data.get(ATTR_FROM_ME))
+        body_prefix = service_data.get(ATTR_BODY_PREFIX)
+        if isinstance(body_prefix, str) and body_prefix:
+            rpc_params["bodyPrefix"] = body_prefix
+
+        result = await async_ws_rpc_request(
+            hass,
+            action="list_messages",
+            params=rpc_params,
+            configured_host_port=configured_host_port,
+            ws_path=ws_path,
+            timeout_seconds=20,
+        )
+        messages = result.get("messages")
+        normalized_messages = messages if isinstance(messages, list) else []
+        return {
+            "chat_id": result.get("chatId") or chat_id,
+            "chat_name": result.get("chatName"),
+            "count": result.get("count", len(normalized_messages)),
+            "requested_limit": result.get(
+                "requestedLimit",
+                int(service_data.get(ATTR_LIMIT, DEFAULT_LIST_MESSAGES_LIMIT)),
+            ),
+            "messages": normalized_messages,
+        }
+
+    if SupportsResponse is not None:
+        try:
+            hass.services.async_register(
+                DOMAIN,
+                SERVICE_CHANNEL_MSG_LIST,
+                _async_channel_msg_list_service,
+                schema=SERVICE_CHANNEL_MSG_LIST_SCHEMA,
+                supports_response=SupportsResponse.ONLY,
+            )
+        except TypeError:
+            hass.services.async_register(
+                DOMAIN,
+                SERVICE_CHANNEL_MSG_LIST,
+                _async_channel_msg_list_service,
+                schema=SERVICE_CHANNEL_MSG_LIST_SCHEMA,
+            )
+    else:
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_CHANNEL_MSG_LIST,
+            _async_channel_msg_list_service,
+            schema=SERVICE_CHANNEL_MSG_LIST_SCHEMA,
+        )
+
+    domain_data[SERVICE_CHANNEL_MSG_LIST_REGISTERED_KEY] = True
 
 
 def _to_ha_message_event(payload: dict[str, Any]) -> dict[str, Any]:
@@ -531,6 +679,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     domain_data[START_LISTENER_CALLBACK_KEY] = _start_listener
     _ensure_stop_listener_registered(hass)
+    _ensure_channel_msg_list_service(hass)
     return True
 
 
@@ -596,9 +745,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     domain_data[START_LISTENER_CALLBACK_KEY] = _start_listener
     _ensure_stop_listener_registered(hass)
+    _ensure_channel_msg_list_service(hass)
     await _ensure_auto_notify_platform(hass, ws_path)
 
-    heartbeat_monitor = await async_setup_heartbeat(hass, entry, configured_host_port)
+    heartbeat_monitor = await async_setup_heartbeat(
+        hass,
+        entry,
+        configured_host_port,
+        ws_path,
+    )
     if heartbeat_monitor is not None:
         domain_data[HEARTBEAT_MONITOR_KEY] = heartbeat_monitor
 
