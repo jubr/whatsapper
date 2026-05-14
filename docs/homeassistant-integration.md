@@ -278,11 +278,12 @@ automation:
           message: "whatsapper-pong{{ ping_suffix }}"
 ```
 
-## Example automation package: Dutch <-> Portuguese translator
+## Example automation blueprint: chat translator
 
 See:
 
 - [`docs/automation-translate-home-assistant-chat.yaml`](./automation-translate-home-assistant-chat.yaml)
 
-It listens to hardcoded `chat_name: Home Assistant`, calls the public Google translate endpoint,
-posts the translated text as a regular message, and uses message reactions for fast progress/fail/success state.
+It takes `chat_name` and WhatsApp service name as blueprint inputs, calls the public Google translate endpoint,
+supports configurable language groups, posts the translated text as a regular message,
+and uses message reactions for fast progress/fail/success state.

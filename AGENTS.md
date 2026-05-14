@@ -78,21 +78,23 @@ Future agents should follow these defaults unless the user explicitly asks other
   - default reaction behavior is additive/set (non-toggle) unless toggle explicitly requested
 - Keep verbose diagnostic logs for route decision (`react_message` vs `send_message`).
 
-## 9) Translation automation package defaults
+## 9) Translation automation blueprint defaults
 
 File: `docs/automation-translate-home-assistant-chat.yaml`
 
 - Uses public Google Translate endpoint via `rest_command.whatsapper_google_translate`.
-- Triggered from `whatsapper_message`/`whatsappur_message`, filtered by hardcoded chat name variable.
-- Default dirty mode is enabled (`use_dirty_build: true`) unless user changes it.
+- Triggered from `whatsapper_message`/`whatsappur_message`, selected by blueprint input `wa_service_name`.
+- Uses blueprint input `chat_name` (default `Home Assistant`) instead of hardcoded chat filtering.
 - Routing:
-  - source `en` or `nl` -> target `pt`
-  - source `pt` -> target `nl`
+  - source language in `language_one` -> target is first code from `language_two`
+  - source language in `language_two` -> target is first code from `language_one`
+  - defaults: `language_one: "nl,en"`, `language_two: "pt"`
 - Confidence gate threshold default: `0.5` (or alphabetic char fallback gate).
 - Progress/status reactions:
   - start: busy fish
   - success: replace fish with detected source-language flag (from shortlist map)
   - fail: replace with question icon
+- Loop-prevention prefix regex is built dynamically from target/source primary flags + globe (defaults to `^(🇵🇹|🇳🇱|🌐)`).
 - Translation message is posted as regular message (not quoted reply).
 - Automation should be defensive against missing response variables and service/network failures.
 
