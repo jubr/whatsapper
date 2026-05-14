@@ -27,12 +27,12 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 
 from .auto_host_port import async_detect_host_port
+from .rpc import async_resolve_chat_id_from_name, async_ws_rpc_request
 
 _LOGGER = logging.getLogger(__name__)
 
 HEARTBEAT_PREFIX = "Heartbeat "
 RUNTIME_INFO_PATH = "/api/v1/wwebjs/runtime"
-CHATS_PATH = "/api/v1/chats"
 
 # How many extra multiples of the interval are allowed before declaring missed.
 # E.g. with factor 1.5, if interval=5 min we expect a message within 7.5 min.
@@ -54,6 +54,7 @@ class HeartbeatMonitor:
         hass: HomeAssistant,
         entry: ConfigEntry,
         configured_host_port: str | None,
+        ws_path: str,
         chat_name: str,
         interval_minutes: int,
         notify_targets: list[str],
@@ -61,6 +62,7 @@ class HeartbeatMonitor:
         self.hass = hass
         self.entry = entry
         self._configured_host_port = configured_host_port
+        self._ws_path = ws_path
         self._chat_name = chat_name
         self._interval_minutes = interval_minutes
         self._notify_targets = notify_targets
@@ -149,7 +151,7 @@ class HeartbeatMonitor:
         if not self._chat_name:
             return CONNECTIVITY_OK
 
-        latest_ts = await self._fetch_latest_heartbeat_ts(session, host_port)
+        latest_ts = await self._fetch_latest_heartbeat_ts(host_port)
         if latest_ts is None:
             return CONNECTIVITY_HEARTBEAT_MISSED
 
@@ -160,90 +162,57 @@ class HeartbeatMonitor:
 
         return CONNECTIVITY_OK
 
-    async def _fetch_latest_heartbeat_ts(
-        self, session: Any, host_port: str
-    ) -> datetime | None:
+    async def _fetch_latest_heartbeat_ts(self, host_port: str) -> datetime | None:
         """Return the timestamp of the most recent Heartbeat message, or None."""
         try:
-            url = f"http://{host_port}{CHATS_PATH}"
-            name_param = self._chat_name.replace(" ", "+")
-            async with session.get(
-                f"{url}?name={name_param}", timeout=8
-            ) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json(content_type=None)
-        except (ClientError, TimeoutError, OSError, asyncio.TimeoutError):
+            chat_id = await async_resolve_chat_id_from_name(
+                self.hass,
+                chat_name=self._chat_name,
+                configured_host_port=self._configured_host_port,
+                ws_path=self._ws_path,
+            )
+        except Exception:  # pylint: disable=broad-except
             return None
 
-        # The /api/v1/chats?name= response returns { query, matches }
-        matches = data.get("matches") or data.get("chats") or []
-        if not matches:
-            return None
-
-        chat_id = matches[0].get("id") if isinstance(matches[0], dict) else None
-        if not chat_id:
-            return None
-
-        # Use the events WebSocket RPC to get messages with the heartbeat prefix.
         return await self._fetch_latest_heartbeat_ts_via_rpc(host_port, chat_id)
 
     async def _fetch_latest_heartbeat_ts_via_rpc(
         self, host_port: str, chat_id: str
     ) -> datetime | None:
-        """Use WS RPC resolve_chat to find recent heartbeat messages."""
-        # We approximate by checking the lastMessagePreview from the chat list,
-        # which contains the most recent message body.
+        """Use WS RPC list_messages to find recent heartbeat messages."""
         try:
-            session = async_get_clientsession(self.hass)
-            url = f"http://{host_port}{CHATS_PATH}"
-            async with session.get(url, timeout=8) as resp:
-                if resp.status != 200:
-                    return None
-                data = await resp.json(content_type=None)
-        except (ClientError, TimeoutError, OSError, asyncio.TimeoutError):
+            payload = await async_ws_rpc_request(
+                self.hass,
+                action="list_messages",
+                params={
+                    "chatId": chat_id,
+                    "limit": max(20, int(self._interval_minutes) * 4),
+                    "fromMe": True,
+                    "bodyPrefix": HEARTBEAT_PREFIX,
+                },
+                configured_host_port=self._configured_host_port or host_port,
+                ws_path=self._ws_path,
+                timeout_seconds=20,
+            )
+        except Exception:  # pylint: disable=broad-except
             return None
 
-        chats = data.get("chats") or []
-        chat = next((c for c in chats if c.get("id") == chat_id), None)
-        if not chat:
+        messages = payload.get("messages")
+        if not isinstance(messages, list):
             return None
 
-        preview = chat.get("lastMessagePreview", "")
-        last_from_me = chat.get("lastMessageFromMe", False)
-        last_at = chat.get("lastMessageAt")
+        timestamps = []
+        for message in messages:
+            if not isinstance(message, dict):
+                continue
+            raw_ts = message.get("timestamp")
+            if isinstance(raw_ts, (int, float)) and raw_ts > 0:
+                timestamps.append(int(raw_ts))
 
-        if not (
-            isinstance(preview, str)
-            and preview.startswith(HEARTBEAT_PREFIX)
-            and last_from_me
-        ):
+        if not timestamps:
             return None
-
-        if not last_at:
-            return None
-
-        # lastMessageAt is a locale string like "10:32" or "01/04/2026".
-        # We can only approximate: treat it as "now" if it looks like a time
-        # (HH:MM), else we can't parse it reliably → return now as a proxy.
-        # The cutoff check uses a 1.5× window so small parsing imprecision
-        # is acceptable.
-        now = datetime.now(timezone.utc)
-        try:
-            # If the format is HH:MM the message was today.
-            parts = str(last_at).strip().split(":")
-            if len(parts) == 2 and all(p.isdigit() for p in parts):
-                hour, minute = int(parts[0]), int(parts[1])
-                ts = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-                # Handle midnight rollover: if ts is in the future, it was yesterday.
-                if ts > now:
-                    from datetime import timedelta
-                    ts = ts - timedelta(days=1)
-                return ts
-        except (ValueError, AttributeError):
-            pass
-        # Fallback: treat as recent (today); the window check will sort it out.
-        return now
+        latest_timestamp = max(timestamps)
+        return datetime.fromtimestamp(latest_timestamp, tz=timezone.utc)
 
     # ------------------------------------------------------------------
     # State management + notifications
@@ -356,6 +325,7 @@ async def async_setup_heartbeat(
     hass: HomeAssistant,
     entry: ConfigEntry,
     configured_host_port: str | None,
+    ws_path: str,
 ) -> HeartbeatMonitor | None:
     """Create and start a HeartbeatMonitor for the given config entry.
 
@@ -383,6 +353,7 @@ async def async_setup_heartbeat(
         hass=hass,
         entry=entry,
         configured_host_port=configured_host_port,
+        ws_path=ws_path,
         chat_name=chat_name,
         interval_minutes=max(1, interval),
         notify_targets=notify_targets,

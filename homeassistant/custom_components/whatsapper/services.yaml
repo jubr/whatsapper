@@ -26,3 +26,32 @@ notify:
         reply_to_message_id: "true_12345@c.us_ABCDEF"
         reaction_add: "🙃"
         reaction_toggle: true
+
+channel_msg_list:
+  name: "Whatsapper channel/chat message list"
+  description: "List recent WhatsApp messages from a chat/channel via websocket RPC."
+  fields:
+    target:
+      name: Chat target
+      description: "Optional chat_id or chat/channel name. Supports a single string or list with one value."
+      example: "Family Group"
+    chat_id:
+      name: Chat ID
+      description: "Optional direct chat/channel id (for example 12345@g.us)."
+      example: "12345@g.us"
+    chat_name:
+      name: Chat name
+      description: "Optional chat/channel name to resolve when chat_id is not provided."
+      example: "Family Group"
+    limit:
+      name: Limit
+      description: "Maximum number of messages to return (1-200)."
+      example: 20
+    from_me:
+      name: From me
+      description: "Optional filter; true returns only self-sent messages, false returns only non-self messages."
+      example: true
+    body_prefix:
+      name: Body prefix
+      description: "Optional text prefix filter for message body."
+      example: "Heartbeat "

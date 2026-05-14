@@ -12,6 +12,8 @@
 - Added reconnect version mismatch handling in integration (notify + delayed config entry reload).
 - Added local integration brand asset bundle for renamed dirty/dev builds and marked integration as `cloud_push`.
 - Added docs/examples for translation automation (Dutch ↔ Portuguese) with loop prevention and chat-name targeting.
+- Added websocket RPC `list_messages` plus integration service `whatsapper.channel_msg_list` for channel/chat message listing in automations.
+- Updated heartbeat monitor to use RPC message listing with real message timestamps instead of chat preview approximation.
 
 ## 1.2.0 (2026-02-03)
 - Update to latest version from baldarn/whatsapper (changelog : https://github.com/baldarn/whatsapper/releases/tag/1.2.0)

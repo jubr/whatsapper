@@ -23,7 +23,10 @@ For the full WhatsApp API surface, use the upstream docs directly:
    - removes the issue automatically when WhatsApp reports `ready`
 5. Chat name lookup for notify targets:
    - resolves channel/chat names to `chat_id` via `GET /api/v1/chats?name=...`
-6. Runtime hot swap page:
+6. Channel/chat message listing for automations:
+   - add-on websocket RPC `list_messages`
+   - integration service `whatsapper.channel_msg_list` (response-capable)
+7. Runtime hot swap page:
    - `/hotswap` with websocket progress log, connection status, and GitHub refs list
 
 ## Differences vs raw `whatsapp-web.js`

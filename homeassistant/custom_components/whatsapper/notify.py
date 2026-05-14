@@ -2,15 +2,12 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import unicodedata
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any
-from uuid import uuid4
 
 import voluptuous as vol
-from aiohttp import WSMsgType
 from homeassistant.components.notify import (
     PLATFORM_SCHEMA,
     BaseNotificationService,
@@ -19,9 +16,12 @@ from homeassistant.components.notify import (
     ATTR_TARGET,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
-from .auto_host_port import async_detect_host_port
+from .rpc import (
+    async_resolve_chat_id,
+    async_resolve_chat_id_from_name,
+    async_ws_rpc_request,
+)
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -130,124 +130,40 @@ class WhatsapperNotificationService(BaseNotificationService):
 
         return candidate if has_symbol else None
 
-    async def _get_host_port(self, refresh: bool = False) -> str:
-        return await async_detect_host_port(
-            self.hass,
-            self.host_port,
-            refresh=refresh,
-        )
-
-    def _build_ws_url_for_host(self, host_port: str) -> str:
-        normalized_path = self.ws_path if str(self.ws_path).startswith("/") else f"/{self.ws_path}"
-        return f"ws://{host_port}{normalized_path}?events=message"
-
     async def _ws_rpc_request(self, action: str, params: dict[str, Any]) -> dict[str, Any]:
-        request_id = str(uuid4())
-        session = async_get_clientsession(self.hass)
-        attempted_hosts: list[str] = []
-        errors: list[str] = []
-
-        first_host = await self._get_host_port(refresh=False)
-        attempted_hosts.append(first_host)
-        if not self.host_port:
-            refreshed_host = await self._get_host_port(refresh=True)
-            if refreshed_host not in attempted_hosts:
-                attempted_hosts.append(refreshed_host)
-
-        for host_port in attempted_hosts:
-            ws_url = self._build_ws_url_for_host(host_port)
-            try:
-                async with session.ws_connect(ws_url, heartbeat=30) as websocket:
-                    await websocket.send_json(
-                        {
-                            "type": "rpc",
-                            "requestId": request_id,
-                            "action": action,
-                            "params": params,
-                        }
-                    )
-
-                    while True:
-                        ws_message = await asyncio.wait_for(websocket.receive(), timeout=20)
-
-                        if ws_message.type != WSMsgType.TEXT:
-                            if ws_message.type in (
-                                WSMsgType.CLOSED,
-                                WSMsgType.CLOSE,
-                                WSMsgType.ERROR,
-                            ):
-                                raise RuntimeError(
-                                    f"WebSocket closed while waiting for RPC '{action}'"
-                                )
-                            continue
-
-                        try:
-                            payload = json.loads(ws_message.data)
-                        except json.JSONDecodeError:
-                            continue
-
-                        if payload.get("type") in ("connected", "pong"):
-                            continue
-
-                        if (
-                            payload.get("type") == "rpc_result"
-                            and payload.get("requestId") == request_id
-                        ):
-                            if payload.get("ok"):
-                                result = payload.get("result")
-                                return result if isinstance(result, dict) else {}
-                            raise RuntimeError(
-                                str(payload.get("error") or f"RPC action '{action}' failed")
-                            )
-            except Exception as err:  # pylint: disable=broad-except
-                errors.append(f"{host_port}: {err}")
-
-        raise RuntimeError(
-            f"WebSocket RPC '{action}' failed on all host_port candidates ({'; '.join(errors)})"
+        return await async_ws_rpc_request(
+            self.hass,
+            action=action,
+            params=params,
+            configured_host_port=self.host_port,
+            ws_path=str(self.ws_path),
         )
 
     async def _resolve_chat_id_from_name(self, chat_name: str) -> str | None:
-        chat_name = chat_name.strip()
-        if not chat_name:
-            return None
-
         try:
-            payload = await self._ws_rpc_request("resolve_chat", {"name": chat_name})
+            return await async_resolve_chat_id_from_name(
+                self.hass,
+                chat_name=chat_name,
+                configured_host_port=self.host_port,
+                ws_path=str(self.ws_path),
+            )
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.error("Failed to resolve chat '%s' over websocket: %s", chat_name, err)
             return None
 
-        matches = payload.get("matches")
-        if not isinstance(matches, list):
-            _LOGGER.error("Chat lookup websocket response was invalid for '%s'", chat_name)
-            return None
-
-        if len(matches) == 1 and isinstance(matches[0], dict):
-            chat_id = matches[0].get("id")
-            if isinstance(chat_id, str) and chat_id:
-                return chat_id
-
-        if len(matches) == 0:
-            _LOGGER.error("No WhatsApp chat found with name '%s'", chat_name)
-            return None
-
-        matched_names = [str(match.get("name", "")) for match in matches if isinstance(match, dict)]
-        _LOGGER.error(
-            "Chat name '%s' is ambiguous (%s). Use chat_id instead.",
-            chat_name,
-            ", ".join(matched_names),
-        )
-        return None
-
     async def _resolve_chat_id(self, target: str | None) -> str | None:
         if not target:
             return None
-        target = target.strip()
-        if not target:
+        try:
+            return await async_resolve_chat_id(
+                self.hass,
+                target=target,
+                configured_host_port=self.host_port,
+                ws_path=str(self.ws_path),
+            )
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.error("Failed to resolve chat target '%s': %s", target, err)
             return None
-        if self._is_chat_id(target):
-            return target
-        return await self._resolve_chat_id_from_name(target)
 
     async def async_send_message(self, message="", **kwargs):
         """Send a message to the target."""
