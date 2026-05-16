@@ -26,6 +26,8 @@ Future agents should follow these defaults unless the user explicitly asks other
 - On tag-triggered release runs, CI also updates **both** add-on config files on `main`:
   - `config.yaml`
   - `debug/whatsappur/config.yaml`
+- Guardrail: `debug/whatsappur/config.yaml` is only updated in runs that actually build/publish
+  the dev image flavor (`ha-app-whatsappur-*`).
 
 ## 3) Integration version source of truth (UI)
 

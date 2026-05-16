@@ -207,6 +207,16 @@ jobs:
           if [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
             IS_TAG_REF=1
           fi
+          if [ "$IS_TAG_REF" = "1" ]; then
+            BUILD_STABLE=1
+            BUILD_DEV=1
+          elif [ "$IS_DIRTY_BUILD" = "1" ]; then
+            BUILD_STABLE=0
+            BUILD_DEV=1
+          else
+            BUILD_STABLE=1
+            BUILD_DEV=0
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -233,13 +243,11 @@ jobs:
               "${TARGET_FILE}"
           }
 
-          if [ "$IS_TAG_REF" = "1" ]; then
+          if [ "$BUILD_STABLE" = "1" ]; then
             update_regular_config
+          fi
+          if [ "$BUILD_DEV" = "1" ]; then
             update_debug_config
-          elif [ "$IS_DIRTY_BUILD" = "1" ]; then
-            update_debug_config
-          else
-            update_regular_config
           fi
 
           git add config.yaml debug/whatsappur/config.yaml
@@ -248,9 +256,9 @@ jobs:
             exit 0
           fi
 
-          if [ "$IS_TAG_REF" = "1" ]; then
+          if [ "$BUILD_STABLE" = "1" ] && [ "$BUILD_DEV" = "1" ]; then
             COMMIT_SCOPE="config.yaml + debug/whatsappur/config.yaml"
-          elif [ "$IS_DIRTY_BUILD" = "1" ]; then
+          elif [ "$BUILD_DEV" = "1" ]; then
             COMMIT_SCOPE="debug/whatsappur/config.yaml"
           else
             COMMIT_SCOPE="config.yaml"
