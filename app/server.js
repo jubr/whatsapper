@@ -741,6 +741,22 @@ const serializeChatMessage = (message, chatId) => {
   };
 };
 
+const isWaitForChatLoadingError = (error) =>
+  String(error?.message || error).includes("waitForChatLoading");
+
+const findChatFromChatList = async (activeClient, normalizedChatId) => {
+  if (typeof activeClient.getChats !== "function") {
+    return null;
+  }
+  const chats = await activeClient.getChats();
+  if (!Array.isArray(chats)) {
+    return null;
+  }
+  return (
+    chats.find((candidate) => candidate?.id?._serialized === normalizedChatId) || null
+  );
+};
+
 const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" }) => {
   const normalizedChatId = typeof chatId === "string" ? chatId.trim() : "";
   if (!normalizedChatId) {
@@ -760,7 +776,28 @@ const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" })
     max: 200,
   });
   const normalizedBodyPrefix = typeof bodyPrefix === "string" ? bodyPrefix : "";
-  const chat = await activeClient.getChatById(normalizedChatId);
+  let chat = null;
+  try {
+    chat = await activeClient.getChatById(normalizedChatId);
+  } catch (error) {
+    if (!isWaitForChatLoadingError(error)) {
+      throw error;
+    }
+    logServer("warn", "getChatById failed with waitForChatLoading; trying cached chats fallback", {
+      chatId: normalizedChatId,
+      error: String(error?.message || error),
+    });
+  }
+  if (!chat) {
+    try {
+      chat = await findChatFromChatList(activeClient, normalizedChatId);
+    } catch (error) {
+      logServer("warn", "Fallback getChats lookup failed", {
+        chatId: normalizedChatId,
+        error: String(error?.message || error),
+      });
+    }
+  }
   if (!chat) {
     throw new Error(`Chat '${normalizedChatId}' not found`);
   }
@@ -768,7 +805,19 @@ const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" })
     throw new Error(`Chat '${normalizedChatId}' does not support fetchMessages`);
   }
 
-  const fetchedMessages = await chat.fetchMessages({ limit: normalizedLimit });
+  let fetchedMessages = [];
+  try {
+    fetchedMessages = await chat.fetchMessages({ limit: normalizedLimit });
+  } catch (error) {
+    if (!isWaitForChatLoadingError(error)) {
+      throw error;
+    }
+    logServer("warn", "fetchMessages failed with waitForChatLoading; returning empty message list", {
+      chatId: normalizedChatId,
+      limit: normalizedLimit,
+      error: String(error?.message || error),
+    });
+  }
   let filteredMessages = Array.isArray(fetchedMessages) ? fetchedMessages : [];
   if (typeof fromMe === "boolean") {
     filteredMessages = filteredMessages.filter((message) => Boolean(message?.fromMe) === fromMe);
