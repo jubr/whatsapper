@@ -150,3 +150,17 @@ File: `docs/automation-translate-home-assistant-chat.yaml`
   - `python3`
   - Docker build tooling (Buildx/QEMU in CI workflow)
 
+## 15) Add-on rollout + channel message list reliability
+
+- `list_messages`/`channel_msg_list` must handle transient whatsapp-web runtime failures that include
+  `waitForChatLoading` without hard-failing the full RPC flow.
+- Runtime-side resilience for `list_messages` should:
+  - retry `getChatById` and `fetchMessages` (default: 3 attempts, linear backoff from 250ms)
+  - fall back to `getChats()` chat lookup by `chatId` when `getChatById` retries are exhausted
+  - return an empty `messages` list (with warning logs) if `fetchMessages` retries are exhausted
+    instead of returning `ok=false` for known transient wait-for-chat-loading errors.
+- Operational rollout order when add-on/integration code changes:
+  1. wait for GitHub Actions container build/publish success
+  2. update the Home Assistant add-on to the new container version
+  3. run Home Assistant core reload (`ha_reload_core`, target `all`) so bundled integration bits refresh.
+
