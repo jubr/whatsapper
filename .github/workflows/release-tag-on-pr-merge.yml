@@ -1,0 +1,133 @@
+name: Create release tag on PR merge
+
+on:
+  pull_request_target:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  create-release-tag:
+    if: >
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout merged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.ref }}
+          fetch-depth: 0
+
+      - name: Compute next release tag
+        id: bump
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import re
+          import subprocess
+
+          pr_title = os.environ.get("PR_TITLE", "")
+          release_type = "minor" if "minor" in pr_title.lower() else "patch"
+
+          semver_pattern = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
+
+          raw_tags = (
+              subprocess.check_output(["git", "tag", "--list"], text=True)
+              .splitlines()
+          )
+          parsed_tags: list[tuple[tuple[int, int, int], str]] = []
+          for tag in raw_tags:
+              normalized = tag.strip()
+              match = semver_pattern.fullmatch(normalized)
+              if match:
+                  parsed_tags.append(
+                      (
+                          (
+                              int(match.group(1)),
+                              int(match.group(2)),
+                              int(match.group(3)),
+                          ),
+                          normalized,
+                      )
+                  )
+
+          if parsed_tags:
+              base_version = max(parsed_tags, key=lambda item: item[0])[0]
+          else:
+              package_json = json.loads(pathlib.Path("package.json").read_text(encoding="utf-8"))
+              package_version = str(package_json.get("version", "")).strip()
+              match = semver_pattern.fullmatch(package_version)
+              if not match:
+                  raise SystemExit(
+                      f"Unable to determine base version: package.json version '{package_version}' "
+                      "is not plain semver x.y.z"
+                  )
+              base_version = (
+                  int(match.group(1)),
+                  int(match.group(2)),
+                  int(match.group(3)),
+              )
+
+          major, minor, patch = base_version
+          if release_type == "minor":
+              next_version = (major, minor + 1, 0)
+          else:
+              next_version = (major, minor, patch + 1)
+
+          next_tag = f"{next_version[0]}.{next_version[1]}.{next_version[2]}"
+
+          github_output = os.environ["GITHUB_OUTPUT"]
+          with open(github_output, "a", encoding="utf-8") as output:
+              output.write(f"release_type={release_type}\n")
+              output.write(f"next_tag={next_tag}\n")
+          PY
+
+      - name: Skip if tag already exists
+        id: tag_exists
+        env:
+          NEXT_TAG: ${{ steps.bump.outputs.next_tag }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/${NEXT_TAG}" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create annotated tag
+        if: steps.tag_exists.outputs.exists != 'true'
+        env:
+          NEXT_TAG: ${{ steps.bump.outputs.next_tag }}
+          RELEASE_TYPE: ${{ steps.bump.outputs.release_type }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${NEXT_TAG}" -m "Release ${NEXT_TAG}
+
+          Source PR: #${PR_NUMBER} ${PR_TITLE}
+          Bump type: ${RELEASE_TYPE}"
+          git push origin "refs/tags/${NEXT_TAG}"
+
+      - name: Write summary
+        env:
+          NEXT_TAG: ${{ steps.bump.outputs.next_tag }}
+          RELEASE_TYPE: ${{ steps.bump.outputs.release_type }}
+          TAG_ALREADY_EXISTS: ${{ steps.tag_exists.outputs.exists }}
+        run: |
+          {
+            echo "### Release tagging result"
+            echo ""
+            echo "- Next tag: \`${NEXT_TAG}\`"
+            echo "- Bump type: \`${RELEASE_TYPE}\`"
+            echo "- Existing tag before run: \`${TAG_ALREADY_EXISTS}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
