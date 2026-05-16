@@ -741,6 +741,60 @@ const serializeChatMessage = (message, chatId) => {
   };
 };
 
+const WAIT_FOR_CHAT_LOADING_RETRY_ATTEMPTS = 3;
+const WAIT_FOR_CHAT_LOADING_RETRY_DELAY_MS = 250;
+
+const isWaitForChatLoadingError = (error) =>
+  String(error?.message || error).includes("waitForChatLoading");
+
+const delay = (milliseconds) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+
+const withWaitForChatLoadingRetry = async ({
+  actionName,
+  chatId,
+  operation,
+  attempts = WAIT_FOR_CHAT_LOADING_RETRY_ATTEMPTS,
+  baseDelayMs = WAIT_FOR_CHAT_LOADING_RETRY_DELAY_MS,
+}) => {
+  let attempt = 1;
+  while (attempt <= attempts) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isWaitForChatLoadingError(error) || attempt >= attempts) {
+        throw error;
+      }
+      const retryDelayMs = baseDelayMs * attempt;
+      logServer("warn", "waitForChatLoading transient failure; retrying", {
+        action: actionName,
+        chatId,
+        attempt,
+        retryDelayMs,
+        error: String(error?.message || error),
+      });
+      await delay(retryDelayMs);
+      attempt += 1;
+    }
+  }
+  return null;
+};
+
+const findChatFromChatList = async (activeClient, normalizedChatId) => {
+  if (typeof activeClient.getChats !== "function") {
+    return null;
+  }
+  const chats = await activeClient.getChats();
+  if (!Array.isArray(chats)) {
+    return null;
+  }
+  return (
+    chats.find((candidate) => candidate?.id?._serialized === normalizedChatId) || null
+  );
+};
+
 const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" }) => {
   const normalizedChatId = typeof chatId === "string" ? chatId.trim() : "";
   if (!normalizedChatId) {
@@ -760,7 +814,33 @@ const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" })
     max: 200,
   });
   const normalizedBodyPrefix = typeof bodyPrefix === "string" ? bodyPrefix : "";
-  const chat = await activeClient.getChatById(normalizedChatId);
+  let chat = null;
+  try {
+    chat = await withWaitForChatLoadingRetry({
+      actionName: "getChatById",
+      chatId: normalizedChatId,
+      operation: async () => activeClient.getChatById(normalizedChatId),
+    });
+  } catch (error) {
+    if (!isWaitForChatLoadingError(error)) {
+      throw error;
+    }
+    logServer("warn", "getChatById retries exhausted; trying cached chats fallback", {
+      chatId: normalizedChatId,
+      attempts: WAIT_FOR_CHAT_LOADING_RETRY_ATTEMPTS,
+      error: String(error?.message || error),
+    });
+  }
+  if (!chat) {
+    try {
+      chat = await findChatFromChatList(activeClient, normalizedChatId);
+    } catch (error) {
+      logServer("warn", "Fallback getChats lookup failed", {
+        chatId: normalizedChatId,
+        error: String(error?.message || error),
+      });
+    }
+  }
   if (!chat) {
     throw new Error(`Chat '${normalizedChatId}' not found`);
   }
@@ -768,7 +848,24 @@ const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" })
     throw new Error(`Chat '${normalizedChatId}' does not support fetchMessages`);
   }
 
-  const fetchedMessages = await chat.fetchMessages({ limit: normalizedLimit });
+  let fetchedMessages = [];
+  try {
+    fetchedMessages = await withWaitForChatLoadingRetry({
+      actionName: "fetchMessages",
+      chatId: normalizedChatId,
+      operation: async () => chat.fetchMessages({ limit: normalizedLimit }),
+    });
+  } catch (error) {
+    if (!isWaitForChatLoadingError(error)) {
+      throw error;
+    }
+    logServer("warn", "fetchMessages retries exhausted; returning empty message list", {
+      chatId: normalizedChatId,
+      limit: normalizedLimit,
+      attempts: WAIT_FOR_CHAT_LOADING_RETRY_ATTEMPTS,
+      error: String(error?.message || error),
+    });
+  }
   let filteredMessages = Array.isArray(fetchedMessages) ? fetchedMessages : [];
   if (typeof fromMe === "boolean") {
     filteredMessages = filteredMessages.filter((message) => Boolean(message?.fromMe) === fromMe);
