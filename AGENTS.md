@@ -17,10 +17,15 @@ Future agents should follow these defaults unless the user explicitly asks other
 - Docker image naming:
   - clean: `ghcr.io/jubr/ha-app-whatsapper-{arch}`
   - dirty: `ghcr.io/jubr/ha-app-whatsappur-{arch}`
+- Tag-triggered release builds (annotated semver tags) publish **both** clean and dev images
+  for each architecture using the same release version tag.
 - Before Docker build, CI must sync integration version files to computed release version:
   - `homeassistant/custom_components/whatsapper/manifest.json` (`version`)
   - `homeassistant/custom_components/whatsapper/__init__.py` (`INTEGRATION_RUNTIME_VERSION`)
 - Workflow supports `main` and `cursor/**` branches.
+- On tag-triggered release runs, CI also updates **both** add-on config files on `main`:
+  - `config.yaml`
+  - `debug/whatsappur/config.yaml`
 
 ## 3) Integration version source of truth (UI)
 
