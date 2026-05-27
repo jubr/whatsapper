@@ -605,6 +605,14 @@
       }
     };
 
+    // Set to the integration version observed when the user clicked the
+    // restart-HA row. While non-null, applyUiStatus keeps the integration
+    // row meta as "restart" instead of the (still-cached, stale) version.
+    // Cleared as soon as a different integration version arrives via the
+    // status websocket, which only happens after HA core has finished
+    // restarting and the integration re-registered with the add-on.
+    let pendingHaRestartFromVersion = null;
+
     const setIntegrationRowAction = (enabled, canRestart) => {
       const row = document.querySelector('[data-ui-row="integrationVersion"]');
       if (!row) {
@@ -632,10 +640,19 @@
         if (!confirmed) {
           return;
         }
+        const metaEl = row.querySelector("[data-ui-meta]");
+        const previousIntegrationVersion = metaEl ? metaEl.textContent : null;
+        if (metaEl) {
+          metaEl.textContent = "restart";
+        }
+        pendingHaRestartFromVersion = previousIntegrationVersion;
         try {
           await requestHaRestart();
-          window.alert("Home Assistant restart requested.");
         } catch (error) {
+          pendingHaRestartFromVersion = null;
+          if (metaEl && previousIntegrationVersion !== null) {
+            metaEl.textContent = previousIntegrationVersion;
+          }
           window.alert(
             `Failed to request Home Assistant restart: ${error.message}\nOpening Developer Tools so you can restart manually.`,
           );
@@ -699,8 +716,19 @@
         dimmed: false,
       });
       const mismatch = Boolean(status.integrationVersionMismatch);
+      if (
+        pendingHaRestartFromVersion !== null &&
+        status.integrationVersion &&
+        status.integrationVersion !== pendingHaRestartFromVersion
+      ) {
+        pendingHaRestartFromVersion = null;
+      }
+      const integrationMetaText =
+        pendingHaRestartFromVersion !== null
+          ? "restart"
+          : status.integrationVersion || "unknown";
       renderRowStatus(document.querySelector('[data-ui-row="integrationVersion"]'), {
-        meta: status.integrationVersion || "unknown",
+        meta: integrationMetaText,
         subtitle: mismatch
           ? "Restart Home Assistant core to update..."
           : "Home Assistant custom component",

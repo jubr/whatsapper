@@ -1386,7 +1386,7 @@ fastify.get("/api/v1/wwebjs/runtime", async function handler(_, reply) {
   return reply.send(getRuntimeState());
 });
 
-fastify.post("/api/v1/ha/restart", async function handler(_, reply) {
+fastify.post("/api/v1/ha/restart", function handler(_, reply) {
   if (!canRestartHomeAssistant()) {
     reply.statusCode = 503;
     return reply.send({
@@ -1396,17 +1396,28 @@ fastify.post("/api/v1/ha/restart", async function handler(_, reply) {
         "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
     });
   }
-  try {
-    const result = await requestHomeAssistantRestart();
-    logServer("warn", "Home Assistant restart requested from UI", {
-      mode: result.mode,
-      status: result.status,
-    });
-    return reply.send({ ok: true, result });
-  } catch (error) {
-    reply.statusCode = 502;
-    return reply.send({ ok: false, error: String(error?.message || error) });
-  }
+  // Respond first so the browser actually receives the confirmation. The
+  // supervisor `/core/restart` call tears down Home Assistant core (and with
+  // it the ingress proxy that is forwarding this very request), so awaiting
+  // the supervisor call before replying tends to leave the fetch hanging or
+  // aborted on the client. Fire-and-forget on a short timer instead.
+  reply.send({ ok: true, result: { mode: "scheduled", deferMs: 250 } });
+  logServer("warn", "Home Assistant restart scheduled from UI", { deferMs: "250" });
+  setTimeout(() => {
+    requestHomeAssistantRestart()
+      .then((result) => {
+        logServer("warn", "Home Assistant restart dispatched", {
+          mode: result.mode,
+          status: String(result.status),
+        });
+      })
+      .catch((error) => {
+        logServer("error", "Home Assistant restart dispatch failed", {
+          error: String(error?.message || error),
+        });
+      });
+  }, 250);
+  return reply;
 });
 
 const handleStoreRefreshRequest = async (_request, reply) => {
