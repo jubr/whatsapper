@@ -29,6 +29,31 @@ const heartbeat = require("./heartbeat");
 const fastify = require("fastify")({ logger: false });
 fastify.register(require("@fastify/websocket"));
 
+// Tolerate empty JSON request bodies. Several UI endpoints (e.g. POST
+// /api/v1/ha/restart, /api/v1/ha/store/refresh,
+// /api/v1/ha/store/check-updates) are fired from the browser with
+// `Content-Type: application/json` but no payload. Fastify's default parser
+// rejects those with FST_ERR_CTP_EMPTY_JSON_BODY (HTTP 400) before the route
+// handler runs, which made the "restart Home Assistant" and "check updates"
+// actions from the add-on UI silently fail. Treat an empty body as `{}` for
+// all JSON requests.
+fastify.addContentTypeParser(
+  "application/json",
+  { parseAs: "string" },
+  (_request, body, done) => {
+    if (body === undefined || body === null || body === "") {
+      done(null, {});
+      return;
+    }
+    try {
+      done(null, JSON.parse(body));
+    } catch (error) {
+      error.statusCode = 400;
+      done(error, undefined);
+    }
+  },
+);
+
 fastify.register(require("@fastify/view"), {
   engine: {
     ejs: require("ejs"),
@@ -158,6 +183,11 @@ const getUiStatus = () => {
     qrDimmed: !qrNeedsAttention,
     canRestartHomeAssistant: canRestartHomeAssistant(),
     canStoreRefresh: canRestartHomeAssistant(),
+    // The frontend (app/templates/root.ejs setAppVersionRowAction) gates the
+    // store refresh / check-updates click on status.canUseSupervisorApi. Keep
+    // the legacy keys above for compatibility and expose the name the UI
+    // actually reads, all derived from the same supervisor-token check.
+    canUseSupervisorApi: canRestartHomeAssistant(),
     generatedAt: new Date().toISOString(),
   };
 };
@@ -258,7 +288,12 @@ const triggerStoreRefresh = async () => {
   };
 };
 
-const triggerAddonUpdateCheck = async (addonSlug) => {
+// Supervisor exposes this add-on's own info under /addons/self/info
+// regardless of the repository-prefixed slug (e.g. 62057c9a_whatsappur).
+// Using "self" avoids needing to know the installed slug at runtime.
+const SELF_ADDON_SLUG = "self";
+
+const triggerAddonUpdateCheck = async (addonSlug = SELF_ADDON_SLUG) => {
   const headers = supervisorHeaders();
   const response = await fetch(`${SUPERVISOR_BASE_URL}/addons/${addonSlug}/info`, {
     method: "GET",
@@ -314,9 +349,9 @@ const requestStoreRefreshAndCheckUpdates = async () => {
     );
   }
 
-  const addonSlug = runtimeIdentity.appName || "whatsapper";
+  const addonSlug = SELF_ADDON_SLUG;
   const addonInfoResponse = await fetch(
-    `${SUPERVISOR_BASE_URL}/addons/${encodeURIComponent(addonSlug)}/info`,
+    `${SUPERVISOR_BASE_URL}/addons/${addonSlug}/info`,
     {
       method: "GET",
       headers,
