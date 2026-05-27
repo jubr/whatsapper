@@ -29,29 +29,6 @@ const heartbeat = require("./heartbeat");
 const fastify = require("fastify")({ logger: false });
 fastify.register(require("@fastify/websocket"));
 
-// Tolerate empty JSON request bodies. Several UI endpoints (e.g. POST
-// /api/v1/ha/restart, /api/v1/ha/store-refresh) are fired from the browser
-// with `Content-Type: application/json` but no payload. Fastify's default
-// parser rejects those with FST_ERR_CTP_EMPTY_JSON_BODY (HTTP 400) before the
-// route handler runs, which made the "restart Home Assistant" action from the
-// add-on UI silently fail. Treat an empty body as `{}` for all JSON requests.
-fastify.addContentTypeParser(
-  "application/json",
-  { parseAs: "string" },
-  (_request, body, done) => {
-    if (body === undefined || body === null || body === "") {
-      done(null, {});
-      return;
-    }
-    try {
-      done(null, JSON.parse(body));
-    } catch (error) {
-      error.statusCode = 400;
-      done(error, undefined);
-    }
-  },
-);
-
 fastify.register(require("@fastify/view"), {
   engine: {
     ejs: require("ejs"),
@@ -1397,6 +1374,70 @@ fastify.post("/api/v1/ha/restart", async function handler(_, reply) {
   }
 });
 
+const handleStoreRefreshRequest = async (_request, reply) => {
+  if (!canRestartHomeAssistant()) {
+    reply.statusCode = 503;
+    return reply.send({
+      ok: false,
+      error:
+        "Store refresh is unavailable in this runtime. " +
+        "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
+    });
+  }
+  try {
+    const refresh = await triggerStoreRefresh();
+    logServer("info", "Store refresh requested from UI", {
+      status: String(refresh.status),
+    });
+    return reply.send({
+      ok: true,
+      result: { mode: "store_reload", status: refresh.status, payload: refresh.payload },
+    });
+  } catch (error) {
+    reply.statusCode = 502;
+    return reply.send({ ok: false, error: String(error?.message || error) });
+  }
+};
+
+const handleStoreCheckUpdatesRequest = async (_request, reply) => {
+  if (!canRestartHomeAssistant()) {
+    reply.statusCode = 503;
+    return reply.send({
+      ok: false,
+      error:
+        "Update check is unavailable in this runtime. " +
+        "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
+    });
+  }
+  try {
+    const info = await triggerAddonUpdateCheck();
+    logServer("info", "Add-on update check requested from UI", {
+      updateAvailable: String(Boolean(info.updateAvailable)),
+      currentVersion: info.currentVersion || "-",
+      latestVersion: info.latestVersion || "-",
+    });
+    return reply.send({
+      ok: true,
+      result: {
+        mode: "addon_info",
+        status: info.status,
+        updateAvailable: info.updateAvailable,
+        currentVersion: info.currentVersion,
+        latestVersion: info.latestVersion,
+      },
+    });
+  } catch (error) {
+    reply.statusCode = 502;
+    return reply.send({ ok: false, error: String(error?.message || error) });
+  }
+};
+
+// New routes that match what the UI in templates/root.ejs actually calls.
+fastify.post("/api/v1/ha/store/refresh", handleStoreRefreshRequest);
+fastify.post("/api/v1/ha/store/check-updates", handleStoreCheckUpdatesRequest);
+
+// Legacy combined endpoint kept for backwards compatibility. Also fixed to use
+// the "self" supervisor slug so the addon-info lookup actually resolves.
 fastify.post("/api/v1/ha/store-refresh", async function handler(_, reply) {
   if (!canRestartHomeAssistant()) {
     reply.statusCode = 503;
@@ -1409,8 +1450,8 @@ fastify.post("/api/v1/ha/store-refresh", async function handler(_, reply) {
   }
   try {
     const result = await requestStoreRefreshAndCheckUpdates();
-    logServer("info", "Store refresh requested from UI", {
-      addon: result?.addon?.slug || runtimeIdentity.appName || "-",
+    logServer("info", "Store refresh requested from UI (combined)", {
+      addon: result?.addon?.slug || "-",
       updateAvailable: String(Boolean(result?.addon?.updateAvailable)),
       autoUpdate: String(Boolean(result?.addon?.autoUpdate)),
     });
