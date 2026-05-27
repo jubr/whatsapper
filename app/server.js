@@ -29,6 +29,29 @@ const heartbeat = require("./heartbeat");
 const fastify = require("fastify")({ logger: false });
 fastify.register(require("@fastify/websocket"));
 
+// Tolerate empty JSON request bodies. Several UI endpoints (e.g. POST
+// /api/v1/ha/restart, /api/v1/ha/store-refresh) are fired from the browser
+// with `Content-Type: application/json` but no payload. Fastify's default
+// parser rejects those with FST_ERR_CTP_EMPTY_JSON_BODY (HTTP 400) before the
+// route handler runs, which made the "restart Home Assistant" action from the
+// add-on UI silently fail. Treat an empty body as `{}` for all JSON requests.
+fastify.addContentTypeParser(
+  "application/json",
+  { parseAs: "string" },
+  (_request, body, done) => {
+    if (body === undefined || body === null || body === "") {
+      done(null, {});
+      return;
+    }
+    try {
+      done(null, JSON.parse(body));
+    } catch (error) {
+      error.statusCode = 400;
+      done(error, undefined);
+    }
+  },
+);
+
 fastify.register(require("@fastify/view"), {
   engine: {
     ejs: require("ejs"),
