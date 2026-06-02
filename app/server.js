@@ -29,6 +29,31 @@ const heartbeat = require("./heartbeat");
 const fastify = require("fastify")({ logger: false });
 fastify.register(require("@fastify/websocket"));
 
+// Tolerate empty JSON request bodies. Several UI endpoints (e.g. POST
+// /api/v1/ha/restart, /api/v1/ha/store/refresh,
+// /api/v1/ha/store/check-updates) are fired from the browser with
+// `Content-Type: application/json` but no payload. Fastify's default parser
+// rejects those with FST_ERR_CTP_EMPTY_JSON_BODY (HTTP 400) before the route
+// handler runs, which made the "restart Home Assistant" and "check updates"
+// actions from the add-on UI silently fail. Treat an empty body as `{}` for
+// all JSON requests.
+fastify.addContentTypeParser(
+  "application/json",
+  { parseAs: "string" },
+  (_request, body, done) => {
+    if (body === undefined || body === null || body === "") {
+      done(null, {});
+      return;
+    }
+    try {
+      done(null, JSON.parse(body));
+    } catch (error) {
+      error.statusCode = 400;
+      done(error, undefined);
+    }
+  },
+);
+
 fastify.register(require("@fastify/view"), {
   engine: {
     ejs: require("ejs"),
@@ -158,6 +183,11 @@ const getUiStatus = () => {
     qrDimmed: !qrNeedsAttention,
     canRestartHomeAssistant: canRestartHomeAssistant(),
     canStoreRefresh: canRestartHomeAssistant(),
+    // The frontend (app/templates/root.ejs setAppVersionRowAction) gates the
+    // store refresh / check-updates click on status.canUseSupervisorApi. Keep
+    // the legacy keys above for compatibility and expose the name the UI
+    // actually reads, all derived from the same supervisor-token check.
+    canUseSupervisorApi: canRestartHomeAssistant(),
     generatedAt: new Date().toISOString(),
   };
 };
@@ -258,7 +288,12 @@ const triggerStoreRefresh = async () => {
   };
 };
 
-const triggerAddonUpdateCheck = async (addonSlug) => {
+// Supervisor exposes this add-on's own info under /addons/self/info
+// regardless of the repository-prefixed slug (e.g. 62057c9a_whatsappur).
+// Using "self" avoids needing to know the installed slug at runtime.
+const SELF_ADDON_SLUG = "self";
+
+const triggerAddonUpdateCheck = async (addonSlug = SELF_ADDON_SLUG) => {
   const headers = supervisorHeaders();
   const response = await fetch(`${SUPERVISOR_BASE_URL}/addons/${addonSlug}/info`, {
     method: "GET",
@@ -314,9 +349,9 @@ const requestStoreRefreshAndCheckUpdates = async () => {
     );
   }
 
-  const addonSlug = runtimeIdentity.appName || "whatsapper";
+  const addonSlug = SELF_ADDON_SLUG;
   const addonInfoResponse = await fetch(
-    `${SUPERVISOR_BASE_URL}/addons/${encodeURIComponent(addonSlug)}/info`,
+    `${SUPERVISOR_BASE_URL}/addons/${addonSlug}/info`,
     {
       method: "GET",
       headers,
@@ -1351,7 +1386,7 @@ fastify.get("/api/v1/wwebjs/runtime", async function handler(_, reply) {
   return reply.send(getRuntimeState());
 });
 
-fastify.post("/api/v1/ha/restart", async function handler(_, reply) {
+fastify.post("/api/v1/ha/restart", function handler(_, reply) {
   if (!canRestartHomeAssistant()) {
     reply.statusCode = 503;
     return reply.send({
@@ -1361,19 +1396,94 @@ fastify.post("/api/v1/ha/restart", async function handler(_, reply) {
         "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
     });
   }
-  try {
-    const result = await requestHomeAssistantRestart();
-    logServer("warn", "Home Assistant restart requested from UI", {
-      mode: result.mode,
-      status: result.status,
+  // Respond first so the browser actually receives the confirmation. The
+  // supervisor `/core/restart` call tears down Home Assistant core (and with
+  // it the ingress proxy that is forwarding this very request), so awaiting
+  // the supervisor call before replying tends to leave the fetch hanging or
+  // aborted on the client. Fire-and-forget on a short timer instead.
+  reply.send({ ok: true, result: { mode: "scheduled", deferMs: 250 } });
+  logServer("warn", "Home Assistant restart scheduled from UI", { deferMs: "250" });
+  setTimeout(() => {
+    requestHomeAssistantRestart()
+      .then((result) => {
+        logServer("warn", "Home Assistant restart dispatched", {
+          mode: result.mode,
+          status: String(result.status),
+        });
+      })
+      .catch((error) => {
+        logServer("error", "Home Assistant restart dispatch failed", {
+          error: String(error?.message || error),
+        });
+      });
+  }, 250);
+  return reply;
+});
+
+const handleStoreRefreshRequest = async (_request, reply) => {
+  if (!canRestartHomeAssistant()) {
+    reply.statusCode = 503;
+    return reply.send({
+      ok: false,
+      error:
+        "Store refresh is unavailable in this runtime. " +
+        "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
     });
-    return reply.send({ ok: true, result });
+  }
+  try {
+    const refresh = await triggerStoreRefresh();
+    logServer("info", "Store refresh requested from UI", {
+      status: String(refresh.status),
+    });
+    return reply.send({
+      ok: true,
+      result: { mode: "store_reload", status: refresh.status, payload: refresh.payload },
+    });
   } catch (error) {
     reply.statusCode = 502;
     return reply.send({ ok: false, error: String(error?.message || error) });
   }
-});
+};
 
+const handleStoreCheckUpdatesRequest = async (_request, reply) => {
+  if (!canRestartHomeAssistant()) {
+    reply.statusCode = 503;
+    return reply.send({
+      ok: false,
+      error:
+        "Update check is unavailable in this runtime. " +
+        "Set 'hassio_api: true' in the add-on config.yaml and restart the add-on.",
+    });
+  }
+  try {
+    const info = await triggerAddonUpdateCheck();
+    logServer("info", "Add-on update check requested from UI", {
+      updateAvailable: String(Boolean(info.updateAvailable)),
+      currentVersion: info.currentVersion || "-",
+      latestVersion: info.latestVersion || "-",
+    });
+    return reply.send({
+      ok: true,
+      result: {
+        mode: "addon_info",
+        status: info.status,
+        updateAvailable: info.updateAvailable,
+        currentVersion: info.currentVersion,
+        latestVersion: info.latestVersion,
+      },
+    });
+  } catch (error) {
+    reply.statusCode = 502;
+    return reply.send({ ok: false, error: String(error?.message || error) });
+  }
+};
+
+// New routes that match what the UI in templates/root.ejs actually calls.
+fastify.post("/api/v1/ha/store/refresh", handleStoreRefreshRequest);
+fastify.post("/api/v1/ha/store/check-updates", handleStoreCheckUpdatesRequest);
+
+// Legacy combined endpoint kept for backwards compatibility. Also fixed to use
+// the "self" supervisor slug so the addon-info lookup actually resolves.
 fastify.post("/api/v1/ha/store-refresh", async function handler(_, reply) {
   if (!canRestartHomeAssistant()) {
     reply.statusCode = 503;
@@ -1386,8 +1496,8 @@ fastify.post("/api/v1/ha/store-refresh", async function handler(_, reply) {
   }
   try {
     const result = await requestStoreRefreshAndCheckUpdates();
-    logServer("info", "Store refresh requested from UI", {
-      addon: result?.addon?.slug || runtimeIdentity.appName || "-",
+    logServer("info", "Store refresh requested from UI (combined)", {
+      addon: result?.addon?.slug || "-",
       updateAvailable: String(Boolean(result?.addon?.updateAvailable)),
       autoUpdate: String(Boolean(result?.addon?.autoUpdate)),
     });
