@@ -109,6 +109,7 @@ It uses websocket logs (`/api/v1/wwebjs/ws`) to show install/reload progress and
 
 Available refs (tags + branches) are fetched from GitHub and sorted by commit datetime descending.
 The built-in option is marked and selections are persisted to `/data`, then reapplied on startup.
+A custom GitHub path + branch is also accepted (for example `https://github.com/wwebjs/whatsapp-web.js/tree/stealth`).
 
 ## UI setup (recommended)
 

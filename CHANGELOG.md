@@ -1,5 +1,7 @@
 ## Unreleased (2026-02-27)
 
+- Send-test now falls back to a raw WhatsApp chat-id edit box when the channel list fetch fails.
+- Hotswap accepts a full GitHub path + branch (for example `https://github.com/wwebjs/whatsapp-web.js/tree/stealth`).
 - Added full ingress-focused UI shell with WhatsApp-styled navigation pages for Chats, Logs, Stats, QR and runtime hotswap.
 - Root page now exposes option "chat rows" instead of live chat data, including QR attention badge and pinned app version row.
 - Added dedicated `/logs` page with consolidated plain-text runtime/server/WebSocket/RPC stream (same stream also printed to stdout).

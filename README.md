@@ -84,6 +84,7 @@ Open `/hotswap` (ingress-safe page) to:
 
 - browse GitHub tags and branches (sorted by commit datetime descending)
 - see built-in choice marked as `built-in`
+- paste a full GitHub path + branch (for example `https://github.com/wwebjs/whatsapp-web.js/tree/stealth`)
 - switch versions at runtime and persist selection
 - watch progress and connection status in a scrolling log div via websocket
 

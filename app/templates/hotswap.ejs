@@ -129,7 +129,8 @@
   }
 
   .toolbar select,
-  .toolbar button {
+  .toolbar button,
+  .toolbar input[type="text"] {
     border: 1px solid #2d3b42;
     border-radius: 0.45rem;
     background: #0f1519;
@@ -138,8 +139,25 @@
     font-size: 0.95rem;
   }
 
-  .toolbar select {
+  .toolbar select,
+  .toolbar input[type="text"] {
     min-width: 28rem;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .toolbar input[type="text"] {
+    width: min(42rem, 100%);
+  }
+
+  .toolbar .custom-ref-row {
+    margin-top: 0.7rem;
+  }
+
+  .toolbar .custom-ref-hint {
+    margin-top: 0.3rem;
+    color: var(--wa-muted);
+    font-size: 0.82rem;
   }
 
   .toolbar button {
@@ -244,6 +262,19 @@
     <select id="refSelect"></select>
     <button id="applyButton">Apply</button>
     <button id="refreshButton">Refresh refs</button>
+    <div class="custom-ref-row">
+      <label for="customRefInput"><strong>Or paste GitHub path + branch</strong></label><br />
+      <input
+        type="text"
+        id="customRefInput"
+        placeholder="https://github.com/wwebjs/whatsapp-web.js/tree/stealth"
+        spellcheck="false"
+        autocomplete="off"
+      />
+      <div class="custom-ref-hint" id="customRefHint">
+        Accepts a full GitHub tree URL, <code>owner/repo#branch</code>, or <code>github:owner/repo#ref</code>. Leave empty to use the dropdown.
+      </div>
+    </div>
   </div>
 
   <div id="runtimeState" class="runtime-state"></div>
@@ -255,7 +286,9 @@
 
 <script>
   (function () {
+    const LS_CUSTOM_REF_KEY = "hotswap_custom_github_ref";
     const refSelect = document.getElementById("refSelect");
+    const customRefInput = document.getElementById("customRefInput");
     const applyButton = document.getElementById("applyButton");
     const refreshButton = document.getElementById("refreshButton");
     const runtimeStateEl = document.getElementById("runtimeState");
@@ -324,6 +357,49 @@
       appendLogLine(`[${stamp}] [${level}] ${message}${suffix}`, level);
     };
 
+    const getSelectedChoice = () => customRefInput.value.trim() || refSelect.value || "";
+
+    const updateApplyReady = () => {
+      const swapping = Boolean(runtimeState?.swapping);
+      const hasChoice = Boolean(getSelectedChoice());
+      applyButton.disabled = !runtimeState || swapping || !hasChoice;
+      refSelect.disabled = swapping;
+      customRefInput.disabled = swapping;
+    };
+
+    const persistCustomRef = () => {
+      try {
+        localStorage.setItem(LS_CUSTOM_REF_KEY, customRefInput.value);
+      } catch (_) {}
+    };
+
+    const restoreCustomRef = () => {
+      try {
+        const saved = localStorage.getItem(LS_CUSTOM_REF_KEY);
+        if (saved) {
+          customRefInput.value = saved;
+        }
+      } catch (_) {}
+    };
+
+    const maybePrefillCustomRefFromState = () => {
+      const current = String(runtimeState?.currentChoice || "");
+      if (!current.startsWith("github:")) {
+        return;
+      }
+      if (customRefInput.value.trim()) {
+        return;
+      }
+      const match = /^github:([^#]+)(?:#(.+))?$/.exec(current);
+      if (!match) {
+        return;
+      }
+      customRefInput.value = match[2]
+        ? `https://github.com/${match[1]}/tree/${match[2]}`
+        : `https://github.com/${match[1]}`;
+      persistCustomRef();
+    };
+
     const renderRuntimeState = () => {
       if (!runtimeState) {
         runtimeStateEl.textContent = "Loading runtime state...";
@@ -341,8 +417,8 @@
         `devBuild=${Boolean(runtimeState.devBuild)}`,
       ].join(" | ");
 
-      applyButton.disabled = Boolean(runtimeState.swapping);
-      refSelect.disabled = Boolean(runtimeState.swapping);
+      maybePrefillCustomRefFromState();
+      updateApplyReady();
     };
 
     const renderRefs = () => {
@@ -370,6 +446,17 @@
         }
         refSelect.appendChild(option);
       }
+
+      if (previousChoice && previousChoice.startsWith("github:")) {
+        const alreadyListed = allOptions.some((ref) => ref.choice === previousChoice);
+        if (!alreadyListed) {
+          const option = document.createElement("option");
+          option.value = previousChoice;
+          option.textContent = `[github] ${previousChoice}`;
+          option.selected = true;
+          refSelect.appendChild(option);
+        }
+      }
     };
 
     const handleSnapshot = (payload) => {
@@ -396,6 +483,9 @@
         `${buildAppUrl("api/v1/wwebjs/refs")}${refresh ? "?refresh=1" : ""}`,
       );
       const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || payload?.details || `HTTP ${response.status}`);
+      }
       refsPayload = payload;
       renderRefs();
     };
@@ -446,8 +536,13 @@
       });
     };
 
+    customRefInput.addEventListener("input", () => {
+      persistCustomRef();
+      updateApplyReady();
+    });
+
     applyButton.addEventListener("click", async () => {
-      const choice = refSelect.value;
+      const choice = getSelectedChoice();
       if (!choice) return;
 
       appendLogLine(`[ui] Applying choice: ${choice}`, "info");
@@ -486,9 +581,22 @@
       }
     });
 
+    restoreCustomRef();
+    updateApplyReady();
+
     (async () => {
       await fetchRuntimeState();
-      await fetchRefs(false);
+      try {
+        await fetchRefs(false);
+      } catch (error) {
+        appendLogLine(`[ui] Ref list unavailable: ${error.message}. Paste a GitHub URL to continue.`, "warn");
+        if (!refSelect.options.length) {
+          const option = document.createElement("option");
+          option.value = "";
+          option.textContent = "Could not load refs — paste a GitHub URL below";
+          refSelect.appendChild(option);
+        }
+      }
       openRuntimeSocket();
     })().catch((error) => {
       appendLogLine(`[ui] Startup error: ${error.message}`, "error");

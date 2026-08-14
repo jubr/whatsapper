@@ -98,6 +98,7 @@ Use `/qr` through ingress or direct access to:
 
 Use `/hotswap` to switch `whatsapp-web.js` refs at runtime.
 The page lists tags/branches sorted by commit datetime (desc), marks built-in, persists selection, and shows progress via websocket logs.
+You can also paste a full GitHub path + branch (for example `https://github.com/wwebjs/whatsapp-web.js/tree/stealth`) instead of picking a listed ref.
 
 Dirty builds (`x.y.z-N-sha`) default to:
 

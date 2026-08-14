@@ -8,11 +8,17 @@ const QRCodeModel = require("qrcode-terminal/vendor/QRCode");
 const QRErrorCorrectLevel = require("qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel");
 
 const packageJson = require("../package.json");
+const {
+  parseChoice,
+  normalizeChoice,
+  choiceToInstallSpec: buildInstallSpec,
+  DEFAULT_GITHUB_REPO,
+} = require("./wwebjsChoice");
 
 const APP_ROOT = path.resolve(__dirname, "..");
 const PERSISTED_CHOICE_PATH =
   process.env.WWEBJS_RUNTIME_STATE_PATH || "/data/.whatsapp-webjs-choice.json";
-const GITHUB_REPO = process.env.WWEBJS_GITHUB_REPO || "pedroslopez/whatsapp-web.js";
+const GITHUB_REPO = process.env.WWEBJS_GITHUB_REPO || DEFAULT_GITHUB_REPO;
 const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_REPO}`;
 const REF_CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_REFS_PER_TYPE = Number(process.env.WWEBJS_REF_LIST_LIMIT || 100);
@@ -136,28 +142,6 @@ const emitRuntimeLog = (level, message, details = {}) => {
       console.error("Failed to dispatch runtime log event", error);
     }
   }
-};
-
-const normalizeChoice = (choiceObject) =>
-  choiceObject.type === "built-in"
-    ? "built-in"
-    : `${choiceObject.type}:${choiceObject.ref}`;
-
-const parseChoice = (rawChoice) => {
-  if (rawChoice === "built-in") {
-    return { type: "built-in", ref: null };
-  }
-
-  if (typeof rawChoice !== "string") {
-    throw new Error("Choice must be a string");
-  }
-
-  const match = /^(tag|branch):([A-Za-z0-9._/-]+)$/.exec(rawChoice.trim());
-  if (!match) {
-    throw new Error("Invalid choice format. Expected built-in, tag:<name>, or branch:<name>");
-  }
-
-  return { type: match[1], ref: match[2] };
 };
 
 const serializeMessage = (message) => {
@@ -484,20 +468,17 @@ const loadPersistedChoice = async () => {
     const raw = await fs.readFile(PERSISTED_CHOICE_PATH, "utf8");
     const parsed = JSON.parse(raw);
     const choice = typeof parsed.choice === "string" ? parsed.choice : "built-in";
-    parseChoice(choice);
-    return choice;
+    return normalizeChoice(parseChoice(choice));
   } catch (_) {
     return "built-in";
   }
 };
 
-const choiceToInstallSpec = (choiceObject) => {
-  if (choiceObject.type === "built-in") {
-    return `whatsapp-web.js@${BUNDLED_DEP_SPEC}`;
-  }
-
-  return `github:${GITHUB_REPO}#${choiceObject.ref}`;
-};
+const choiceToInstallSpec = (choiceObject) =>
+  buildInstallSpec(choiceObject, {
+    bundledDepSpec: BUNDLED_DEP_SPEC,
+    defaultRepo: GITHUB_REPO,
+  });
 
 const getRuntimeState = () => ({
   swapping: swapInProgress,
