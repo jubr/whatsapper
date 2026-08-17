@@ -108,7 +108,9 @@ The ingress page `/hotswap` can switch the active `whatsapp-web.js` ref at runti
 It uses websocket logs (`/api/v1/wwebjs/ws`) to show install/reload progress and connection status updates.
 
 Available refs (tags + branches) are fetched from GitHub and sorted by commit datetime descending.
+The list is cached for 1 week (and still served from cache if GitHub is unreachable).
 The built-in option is marked and selections are persisted to `/data`, then reapplied on startup.
+`[Other github repo]` accepts a custom GitHub path + branch (for example `https://github.com/wwebjs/whatsapp-web.js/tree/stealth`); that URI is cleared when Built-in is selected.
 
 ## UI setup (recommended)
 
