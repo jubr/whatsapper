@@ -82,9 +82,11 @@ ports:
 
 Open `/hotswap` (ingress-safe page) to:
 
-- browse GitHub tags and branches (sorted by commit datetime descending)
+- browse GitHub tags and branches (sorted by commit datetime descending, cached for 1 week)
 - see built-in choice marked as `built-in`
-- paste a full GitHub path + branch (for example `https://github.com/wwebjs/whatsapp-web.js/tree/stealth`)
+- choose `[Other github repo]` to paste a full GitHub path + branch (for example `https://github.com/wwebjs/whatsapp-web.js/tree/stealth`)
+- persist that custom URI until `[Built-in]` is selected
+- if GitHub is unreachable, keep using the cached ref list and show when it was cached
 - switch versions at runtime and persist selection
 - watch progress and connection status in a scrolling log div via websocket
 

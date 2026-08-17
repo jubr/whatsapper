@@ -157,6 +157,15 @@ const choiceToGithubUrl = (choiceObject) => {
   return "";
 };
 
+const formatDateTimeStamp = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "unknown";
+  }
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+};
+
 module.exports = {
   DEFAULT_GITHUB_REPO,
   parseChoice,
@@ -164,4 +173,5 @@ module.exports = {
   normalizeChoice,
   choiceToInstallSpec,
   choiceToGithubUrl,
+  formatDateTimeStamp,
 };

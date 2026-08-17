@@ -6,6 +6,7 @@ const {
   normalizeChoice,
   choiceToInstallSpec,
   choiceToGithubUrl,
+  formatDateTimeStamp,
 } = require("../app/wwebjsChoice");
 
 const expectChoice = (raw, expected) => {
@@ -105,5 +106,12 @@ assert.strictEqual(
 assert.throws(() => parseChoice("not-a-choice"), /Invalid choice format/);
 assert.throws(() => parseChoice("https://gitlab.com/foo/bar"), /Invalid choice format/);
 assert.throws(() => parseChoice(123), /Choice must be a string/);
+
+assert.strictEqual(formatDateTimeStamp(new Date(2026, 7, 14, 9, 8, 7)), "2026-08-14 09:08:07");
+assert.strictEqual(formatDateTimeStamp("not-a-date"), "unknown");
+assert.strictEqual(
+  `Seeing results cached from ${formatDateTimeStamp(new Date(2026, 0, 2, 3, 4, 5))}`,
+  "Seeing results cached from 2026-01-02 03:04:05",
+);
 
 console.log("wwebjsChoice tests passed");

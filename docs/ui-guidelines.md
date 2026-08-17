@@ -92,5 +92,8 @@ Rows are rendered as fixed options with icons and routes:
 ## 11) Hotswap custom GitHub refs
 
 - Keep the discovered tag/branch dropdown.
-- Also allow pasting a full GitHub path + branch, for example `https://github.com/wwebjs/whatsapp-web.js/tree/stealth`.
+- Prepend `[Other github repo]` above `[Built-in]`; that option reveals the (otherwise hidden) GitHub URL input.
+- Accept a full GitHub path + branch, for example `https://github.com/wwebjs/whatsapp-web.js/tree/stealth`.
+- Persist the selected whatsapp-web URI; clear it when `[Built-in]` is selected.
+- Cache GitHub ref fetches for 1 week. If a fetch fails, serve the cache and show `Seeing results cached from YYYY-MM-DD hh:mm:ss`.
 

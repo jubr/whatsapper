@@ -154,10 +154,15 @@
     margin-top: 0.7rem;
   }
 
-  .toolbar .custom-ref-hint {
+  .toolbar .custom-ref-hint,
+  .toolbar .refs-cache-notice {
     margin-top: 0.3rem;
     color: var(--wa-muted);
     font-size: 0.82rem;
+  }
+
+  .toolbar .refs-cache-notice {
+    color: #f8d66d;
   }
 
   .toolbar button {
@@ -262,8 +267,8 @@
     <select id="refSelect"></select>
     <button id="applyButton">Apply</button>
     <button id="refreshButton">Refresh refs</button>
-    <div class="custom-ref-row">
-      <label for="customRefInput"><strong>Or paste GitHub path + branch</strong></label><br />
+    <div class="custom-ref-row" id="customRefRow" hidden>
+      <label for="customRefInput"><strong>GitHub path + branch</strong></label><br />
       <input
         type="text"
         id="customRefInput"
@@ -272,9 +277,10 @@
         autocomplete="off"
       />
       <div class="custom-ref-hint" id="customRefHint">
-        Accepts a full GitHub tree URL, <code>owner/repo#branch</code>, or <code>github:owner/repo#ref</code>. Leave empty to use the dropdown.
+        Accepts a full GitHub tree URL, <code>owner/repo#branch</code>, or <code>github:owner/repo#ref</code>.
       </div>
     </div>
+    <div class="refs-cache-notice" id="refsCacheNotice" hidden></div>
   </div>
 
   <div id="runtimeState" class="runtime-state"></div>
@@ -287,8 +293,11 @@
 <script>
   (function () {
     const LS_CUSTOM_REF_KEY = "hotswap_custom_github_ref";
+    const OTHER_GITHUB_CHOICE = "__other_github__";
     const refSelect = document.getElementById("refSelect");
+    const customRefRow = document.getElementById("customRefRow");
     const customRefInput = document.getElementById("customRefInput");
+    const refsCacheNotice = document.getElementById("refsCacheNotice");
     const applyButton = document.getElementById("applyButton");
     const refreshButton = document.getElementById("refreshButton");
     const runtimeStateEl = document.getElementById("runtimeState");
@@ -298,6 +307,8 @@
     let refsPayload = null;
     let runtimeWs = null;
     let hasRenderedSnapshotLogs = false;
+    let lastCacheNotice = "";
+    let userTouchedSelect = false;
 
     const getBasePath = () => {
       const pathname = location.pathname || "/";
@@ -357,23 +368,36 @@
       appendLogLine(`[${stamp}] [${level}] ${message}${suffix}`, level);
     };
 
-    const getSelectedChoice = () => customRefInput.value.trim() || refSelect.value || "";
-
-    const updateApplyReady = () => {
-      const swapping = Boolean(runtimeState?.swapping);
-      const hasChoice = Boolean(getSelectedChoice());
-      applyButton.disabled = !runtimeState || swapping || !hasChoice;
-      refSelect.disabled = swapping;
-      customRefInput.disabled = swapping;
+    const getSelectedChoice = () => {
+      if (refSelect.value === OTHER_GITHUB_CHOICE) {
+        return customRefInput.value.trim();
+      }
+      return refSelect.value || "";
     };
 
     const persistCustomRef = () => {
       try {
-        localStorage.setItem(LS_CUSTOM_REF_KEY, customRefInput.value);
+        const value = customRefInput.value.trim();
+        if (value) {
+          localStorage.setItem(LS_CUSTOM_REF_KEY, value);
+        } else {
+          localStorage.removeItem(LS_CUSTOM_REF_KEY);
+        }
       } catch (_) {}
     };
 
+    const clearPersistedUri = () => {
+      customRefInput.value = "";
+      persistCustomRef();
+    };
+
     const restoreCustomRef = () => {
+      const fromState = String(runtimeState?.customUri || "").trim();
+      if (fromState) {
+        customRefInput.value = fromState;
+        persistCustomRef();
+        return;
+      }
       try {
         const saved = localStorage.getItem(LS_CUSTOM_REF_KEY);
         if (saved) {
@@ -382,22 +406,21 @@
       } catch (_) {}
     };
 
-    const maybePrefillCustomRefFromState = () => {
-      const current = String(runtimeState?.currentChoice || "");
-      if (!current.startsWith("github:")) {
-        return;
+    const syncCustomRefRow = () => {
+      const isOther = refSelect.value === OTHER_GITHUB_CHOICE;
+      customRefRow.hidden = !isOther;
+      if (isOther && !customRefInput.value.trim()) {
+        restoreCustomRef();
       }
-      if (customRefInput.value.trim()) {
-        return;
-      }
-      const match = /^github:([^#]+)(?:#(.+))?$/.exec(current);
-      if (!match) {
-        return;
-      }
-      customRefInput.value = match[2]
-        ? `https://github.com/${match[1]}/tree/${match[2]}`
-        : `https://github.com/${match[1]}`;
-      persistCustomRef();
+    };
+
+    const updateApplyReady = () => {
+      const swapping = Boolean(runtimeState?.swapping);
+      const hasChoice = Boolean(getSelectedChoice());
+      applyButton.disabled = !runtimeState || swapping || !hasChoice;
+      refSelect.disabled = swapping;
+      customRefInput.disabled = swapping;
+      syncCustomRefRow();
     };
 
     const renderRuntimeState = () => {
@@ -411,14 +434,30 @@
         `appName=${runtimeState.appName}`,
         `appPort=${runtimeState.appPort}`,
         `currentChoice=${runtimeState.currentChoice}`,
+        `customUri=${runtimeState.customUri || "-"}`,
         `installedVersion=${runtimeState.installedVersion}`,
         `initialized=${runtimeState.initialized}`,
         `swapping=${runtimeState.swapping}`,
         `devBuild=${Boolean(runtimeState.devBuild)}`,
       ].join(" | ");
 
-      maybePrefillCustomRefFromState();
+      if (runtimeState.currentChoice === "built-in" && refSelect.value === "built-in") {
+        clearPersistedUri();
+      } else if (!customRefInput.value.trim() && runtimeState.customUri) {
+        customRefInput.value = runtimeState.customUri;
+        persistCustomRef();
+      }
       updateApplyReady();
+    };
+
+    const renderCacheNotice = () => {
+      const notice = refsPayload?.cacheNotice || "";
+      refsCacheNotice.textContent = notice;
+      refsCacheNotice.hidden = !notice;
+      if (notice && notice !== lastCacheNotice) {
+        appendLogLine(`[ui] ${notice}`, "warn");
+      }
+      lastCacheNotice = notice;
     };
 
     const renderRefs = () => {
@@ -426,8 +465,26 @@
         return;
       }
 
-      const previousChoice = runtimeState?.currentChoice || refSelect.value;
+      const currentChoice = String(runtimeState?.currentChoice || "");
+      const previousSelect = refSelect.value;
+      const preferOther =
+        previousSelect === OTHER_GITHUB_CHOICE ||
+        (!userTouchedSelect && currentChoice.startsWith("github:"));
+      const preferredChoice = userTouchedSelect
+        ? previousSelect
+        : preferOther
+          ? OTHER_GITHUB_CHOICE
+          : currentChoice || previousSelect;
+
       refSelect.innerHTML = "";
+
+      const otherOption = document.createElement("option");
+      otherOption.value = OTHER_GITHUB_CHOICE;
+      otherOption.textContent = "[Other github repo]";
+      if (preferredChoice === OTHER_GITHUB_CHOICE) {
+        otherOption.selected = true;
+      }
+      refSelect.appendChild(otherOption);
 
       const allOptions = [refsPayload.builtIn, ...(refsPayload.refs || [])];
 
@@ -441,22 +498,15 @@
           option.textContent = `[${ref.type}] ${ref.label} | ${toDateString(ref.updatedAt)}`;
         }
 
-        if (ref.choice === previousChoice) {
+        if (!preferOther && ref.choice === preferredChoice) {
           option.selected = true;
         }
         refSelect.appendChild(option);
       }
 
-      if (previousChoice && previousChoice.startsWith("github:")) {
-        const alreadyListed = allOptions.some((ref) => ref.choice === previousChoice);
-        if (!alreadyListed) {
-          const option = document.createElement("option");
-          option.value = previousChoice;
-          option.textContent = `[github] ${previousChoice}`;
-          option.selected = true;
-          refSelect.appendChild(option);
-        }
-      }
+      renderCacheNotice();
+      syncCustomRefRow();
+      updateApplyReady();
     };
 
     const handleSnapshot = (payload) => {
@@ -536,6 +586,15 @@
       });
     };
 
+    refSelect.addEventListener("change", () => {
+      userTouchedSelect = true;
+      if (refSelect.value === "built-in") {
+        clearPersistedUri();
+      }
+      syncCustomRefRow();
+      updateApplyReady();
+    });
+
     customRefInput.addEventListener("input", () => {
       persistCustomRef();
       updateApplyReady();
@@ -559,7 +618,14 @@
           appendLogLine(`[ui] Hotswap failed: ${payload.error || response.status}`, "error");
         } else {
           runtimeState = payload.result || runtimeState;
+          if (choice === "built-in") {
+            clearPersistedUri();
+            userTouchedSelect = false;
+          } else if (refSelect.value === OTHER_GITHUB_CHOICE) {
+            persistCustomRef();
+          }
           renderRuntimeState();
+          renderRefs();
           appendLogLine(`[ui] Hotswap request completed for ${choice}`, "info");
         }
       } catch (error) {
@@ -581,21 +647,32 @@
       }
     });
 
-    restoreCustomRef();
-    updateApplyReady();
-
     (async () => {
       await fetchRuntimeState();
+      if (runtimeState?.currentChoice === "built-in") {
+        clearPersistedUri();
+      } else {
+        restoreCustomRef();
+      }
       try {
         await fetchRefs(false);
       } catch (error) {
-        appendLogLine(`[ui] Ref list unavailable: ${error.message}. Paste a GitHub URL to continue.`, "warn");
+        appendLogLine(`[ui] Ref list unavailable: ${error.message}. Select [Other github repo] to continue.`, "warn");
         if (!refSelect.options.length) {
-          const option = document.createElement("option");
-          option.value = "";
-          option.textContent = "Could not load refs — paste a GitHub URL below";
-          refSelect.appendChild(option);
+          const otherOption = document.createElement("option");
+          otherOption.value = OTHER_GITHUB_CHOICE;
+          otherOption.textContent = "[Other github repo]";
+          refSelect.appendChild(otherOption);
+          const builtInOption = document.createElement("option");
+          builtInOption.value = "built-in";
+          builtInOption.textContent = "[built-in]";
+          refSelect.appendChild(builtInOption);
+          if (String(runtimeState?.currentChoice || "").startsWith("github:")) {
+            refSelect.value = OTHER_GITHUB_CHOICE;
+          }
         }
+        syncCustomRefRow();
+        updateApplyReady();
       }
       openRuntimeSocket();
     })().catch((error) => {

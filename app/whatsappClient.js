@@ -12,15 +12,19 @@ const {
   parseChoice,
   normalizeChoice,
   choiceToInstallSpec: buildInstallSpec,
+  choiceToGithubUrl,
+  formatDateTimeStamp,
   DEFAULT_GITHUB_REPO,
 } = require("./wwebjsChoice");
 
 const APP_ROOT = path.resolve(__dirname, "..");
 const PERSISTED_CHOICE_PATH =
   process.env.WWEBJS_RUNTIME_STATE_PATH || "/data/.whatsapp-webjs-choice.json";
+const REFS_CACHE_PATH =
+  process.env.WWEBJS_REFS_CACHE_PATH || "/data/.whatsapp-webjs-refs-cache.json";
 const GITHUB_REPO = process.env.WWEBJS_GITHUB_REPO || DEFAULT_GITHUB_REPO;
 const GITHUB_API_BASE = `https://api.github.com/repos/${GITHUB_REPO}`;
-const REF_CACHE_TTL_MS = 5 * 60 * 1000;
+const REF_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_REFS_PER_TYPE = Number(process.env.WWEBJS_REF_LIST_LIMIT || 100);
 const LOG_BACKLOG_LIMIT = 500;
 const BUNDLED_DEP_SPEC =
@@ -69,8 +73,9 @@ let receivedQrConsoleBlock = null;
 let clientInitialized = false;
 let currentConnectionState = "starting";
 let currentChoice = "built-in";
+let currentCustomUri = "";
 let swapInProgress = false;
-let refsCache = { fetchedAt: 0, payload: null };
+let refsCache = { fetchedAt: 0, payload: null, loadedFromDisk: false };
 const chatNameCache = new Map();
 const CHAT_NAME_CACHE_LIMIT = 500;
 
@@ -457,8 +462,17 @@ const runNpmInstall = (installSpec) =>
     });
   });
 
-const persistChoice = async (choice) => {
-  const payload = { choice, savedAt: new Date().toISOString() };
+const persistChoice = async (choice, extras = {}) => {
+  if (choice === "built-in") {
+    currentCustomUri = "";
+  } else if (Object.prototype.hasOwnProperty.call(extras, "customUri")) {
+    currentCustomUri = String(extras.customUri || "").trim();
+  }
+  const payload = {
+    choice,
+    customUri: currentCustomUri,
+    savedAt: new Date().toISOString(),
+  };
   await fs.mkdir(path.dirname(PERSISTED_CHOICE_PATH), { recursive: true });
   await fs.writeFile(PERSISTED_CHOICE_PATH, JSON.stringify(payload, null, 2), "utf8");
 };
@@ -468,8 +482,20 @@ const loadPersistedChoice = async () => {
     const raw = await fs.readFile(PERSISTED_CHOICE_PATH, "utf8");
     const parsed = JSON.parse(raw);
     const choice = typeof parsed.choice === "string" ? parsed.choice : "built-in";
-    return normalizeChoice(parseChoice(choice));
+    const parsedChoice = parseChoice(choice);
+    const normalized = normalizeChoice(parsedChoice);
+    if (normalized === "built-in") {
+      currentCustomUri = "";
+    } else if (typeof parsed.customUri === "string" && parsed.customUri.trim()) {
+      currentCustomUri = parsed.customUri.trim();
+    } else if (parsedChoice.type === "github") {
+      currentCustomUri = choiceToGithubUrl(parsedChoice);
+    } else {
+      currentCustomUri = "";
+    }
+    return normalized;
   } catch (_) {
+    currentCustomUri = "";
     return "built-in";
   }
 };
@@ -486,6 +512,7 @@ const getRuntimeState = () => ({
   connectionState: currentConnectionState,
   state: currentConnectionState,
   currentChoice,
+  customUri: currentCustomUri,
   bundledDependencySpec: BUNDLED_DEP_SPEC,
   installedVersion: getInstalledVersion(),
   appBuildVersion: APP_BUILD_VERSION || packageJson.version || "unknown",
@@ -546,66 +573,141 @@ const fetchCommitDate = async (sha) => {
   }
 };
 
+const decorateRefsPayload = (payload, extras = {}) => ({
+  ...payload,
+  builtIn: {
+    ...(payload?.builtIn || {}),
+    choice: "built-in",
+    type: "built-in",
+    label: `Built-in (${getInstalledVersion()})`,
+    marked: true,
+    updatedAt: payload?.builtIn?.updatedAt || null,
+  },
+  fromCache: Boolean(extras.fromCache),
+  cacheFallback: Boolean(extras.cacheFallback),
+  cachedFrom: extras.cachedFrom || null,
+  cacheNotice: extras.cacheNotice || null,
+});
+
+const loadRefsCacheFromDisk = async () => {
+  if (refsCache.loadedFromDisk) {
+    return;
+  }
+  refsCache.loadedFromDisk = true;
+  try {
+    const raw = await fs.readFile(REFS_CACHE_PATH, "utf8");
+    const parsed = JSON.parse(raw);
+    if (parsed?.payload && Array.isArray(parsed.payload.refs)) {
+      const fetchedAt =
+        Number(parsed.fetchedAt) || Date.parse(parsed.payload.fetchedAt) || 0;
+      refsCache.fetchedAt = fetchedAt;
+      refsCache.payload = parsed.payload;
+    }
+  } catch (_) {
+    // No durable cache yet, or unreadable file.
+  }
+};
+
+const saveRefsCacheToDisk = async () => {
+  try {
+    await fs.mkdir(path.dirname(REFS_CACHE_PATH), { recursive: true });
+    await fs.writeFile(
+      REFS_CACHE_PATH,
+      JSON.stringify({ fetchedAt: refsCache.fetchedAt, payload: refsCache.payload }, null, 2),
+      "utf8",
+    );
+  } catch (error) {
+    emitRuntimeLog("warn", "Failed to persist GitHub refs cache", {
+      error: String(error?.message || error),
+    });
+  }
+};
+
+const serveCachedRefs = ({ cacheFallback = false } = {}) => {
+  const fetchedAt = refsCache.payload?.fetchedAt || refsCache.fetchedAt;
+  const stamp = formatDateTimeStamp(fetchedAt);
+  return decorateRefsPayload(refsCache.payload, {
+    fromCache: true,
+    cacheFallback,
+    cachedFrom: stamp,
+    cacheNotice: cacheFallback ? `Seeing results cached from ${stamp}` : null,
+  });
+};
+
 const listGithubRefs = async ({ refresh = false } = {}) => {
+  await loadRefsCacheFromDisk();
   const now = Date.now();
   if (!refresh && refsCache.payload && now - refsCache.fetchedAt < REF_CACHE_TTL_MS) {
-    return refsCache.payload;
+    return decorateRefsPayload(refsCache.payload, { fromCache: true });
   }
 
-  const [tagsRaw, branchesRaw] = await Promise.all([
-    fetchGithubJson(`${GITHUB_API_BASE}/tags?per_page=${MAX_REFS_PER_TYPE}`),
-    fetchGithubJson(`${GITHUB_API_BASE}/branches?per_page=${MAX_REFS_PER_TYPE}`),
-  ]);
+  try {
+    const [tagsRaw, branchesRaw] = await Promise.all([
+      fetchGithubJson(`${GITHUB_API_BASE}/tags?per_page=${MAX_REFS_PER_TYPE}`),
+      fetchGithubJson(`${GITHUB_API_BASE}/branches?per_page=${MAX_REFS_PER_TYPE}`),
+    ]);
 
-  const refs = [];
-  for (const tag of tagsRaw || []) {
-    if (tag?.name && tag?.commit?.sha) {
-      refs.push({ type: "tag", ref: tag.name, sha: tag.commit.sha });
+    const refs = [];
+    for (const tag of tagsRaw || []) {
+      if (tag?.name && tag?.commit?.sha) {
+        refs.push({ type: "tag", ref: tag.name, sha: tag.commit.sha });
+      }
     }
-  }
-  for (const branch of branchesRaw || []) {
-    if (branch?.name && branch?.commit?.sha) {
-      refs.push({ type: "branch", ref: branch.name, sha: branch.commit.sha });
+    for (const branch of branchesRaw || []) {
+      if (branch?.name && branch?.commit?.sha) {
+        refs.push({ type: "branch", ref: branch.name, sha: branch.commit.sha });
+      }
     }
+
+    const uniqueShas = [...new Set(refs.map((entry) => entry.sha))];
+    const commitDates = {};
+    const commitDateResults = await mapWithConcurrency(uniqueShas, 8, async (sha) => ({
+      sha,
+      date: await fetchCommitDate(sha),
+    }));
+    for (const { sha, date } of commitDateResults) {
+      commitDates[sha] = date;
+    }
+
+    const enrichedRefs = refs
+      .map((entry) => ({
+        ...entry,
+        choice: `${entry.type}:${entry.ref}`,
+        updatedAt: commitDates[entry.sha] || null,
+        label: entry.ref,
+      }))
+      .sort((a, b) => {
+        const aDate = a.updatedAt ? Date.parse(a.updatedAt) : 0;
+        const bDate = b.updatedAt ? Date.parse(b.updatedAt) : 0;
+        return bDate - aDate;
+      });
+
+    const payload = {
+      builtIn: {
+        choice: "built-in",
+        type: "built-in",
+        label: `Built-in (${getInstalledVersion()})`,
+        marked: true,
+        updatedAt: null,
+      },
+      refs: enrichedRefs,
+      fetchedAt: new Date().toISOString(),
+    };
+
+    refsCache = { fetchedAt: now, payload, loadedFromDisk: true };
+    await saveRefsCacheToDisk();
+    return decorateRefsPayload(payload);
+  } catch (error) {
+    if (refsCache.payload) {
+      const cachedFrom = formatDateTimeStamp(refsCache.payload.fetchedAt || refsCache.fetchedAt);
+      emitRuntimeLog("warn", "GitHub refs fetch failed; serving cached results", {
+        error: String(error?.message || error),
+        cachedFrom,
+      });
+      return serveCachedRefs({ cacheFallback: true });
+    }
+    throw error;
   }
-
-  const uniqueShas = [...new Set(refs.map((entry) => entry.sha))];
-  const commitDates = {};
-  const commitDateResults = await mapWithConcurrency(uniqueShas, 8, async (sha) => ({
-    sha,
-    date: await fetchCommitDate(sha),
-  }));
-  for (const { sha, date } of commitDateResults) {
-    commitDates[sha] = date;
-  }
-
-  const enrichedRefs = refs
-    .map((entry) => ({
-      ...entry,
-      choice: `${entry.type}:${entry.ref}`,
-      updatedAt: commitDates[entry.sha] || null,
-      label: entry.ref,
-    }))
-    .sort((a, b) => {
-      const aDate = a.updatedAt ? Date.parse(a.updatedAt) : 0;
-      const bDate = b.updatedAt ? Date.parse(b.updatedAt) : 0;
-      return bDate - aDate;
-    });
-
-  const payload = {
-    builtIn: {
-      choice: "built-in",
-      type: "built-in",
-      label: `Built-in (${getInstalledVersion()})`,
-      marked: true,
-      updatedAt: null,
-    },
-    refs: enrichedRefs,
-    fetchedAt: new Date().toISOString(),
-  };
-
-  refsCache = { fetchedAt: now, payload };
-  return payload;
 };
 
 const swapToChoice = async (rawChoice, { persist = true, reason = "runtime" } = {}) => {
@@ -617,6 +719,16 @@ const swapToChoice = async (rawChoice, { persist = true, reason = "runtime" } = 
   const normalizedChoice = normalizeChoice(choiceObject);
 
   if (normalizedChoice === currentChoice) {
+    if (persist) {
+      if (normalizedChoice === "built-in") {
+        await persistChoice("built-in");
+      } else if (choiceObject.type === "github") {
+        const raw = String(rawChoice || "").trim();
+        const nextUri =
+          raw && raw !== normalizedChoice ? raw : choiceToGithubUrl(choiceObject) || currentCustomUri;
+        await persistChoice(currentChoice, { customUri: nextUri });
+      }
+    }
     emitRuntimeLog("info", "Requested choice is already active", { choice: normalizedChoice });
     return getRuntimeState();
   }
@@ -639,7 +751,17 @@ const swapToChoice = async (rawChoice, { persist = true, reason = "runtime" } = 
 
     currentChoice = normalizedChoice;
     if (persist) {
-      await persistChoice(currentChoice);
+      let nextUri = currentCustomUri;
+      if (normalizedChoice === "built-in") {
+        nextUri = "";
+      } else if (choiceObject.type === "github") {
+        const raw = String(rawChoice || "").trim();
+        nextUri =
+          raw && raw !== normalizedChoice
+            ? raw
+            : choiceToGithubUrl(choiceObject) || currentCustomUri;
+      }
+      await persistChoice(currentChoice, { customUri: nextUri });
     }
 
     emitRuntimeLog("info", "Hotswap complete", {
