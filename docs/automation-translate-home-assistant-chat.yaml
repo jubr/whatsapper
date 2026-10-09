@@ -17,7 +17,8 @@ blueprint:
   name: Whatsapper chat translate (language pair)
   description: >-
     Translates messages in a single WhatsApp chat, posts the translation as a
-    regular message, and updates reactions for busy/success/fail.
+    regular message, updates reactions for busy/success/fail, then marks the
+    chat unread.
     Input `wa_service_name` drives both notify service and incoming event type:
     `notify.<name>` + `<name>_message`.
   domain: automation
@@ -97,7 +98,7 @@ variables:
     pl: "🇵🇱"
     ro: "🇷🇴"
     sv: "🇸🇪"
-    no: "🇳🇴"
+    "no": "🇳🇴"
   selected_notify_service: "{{ 'notify.' ~ cfg_wa_service_name }}"
   lang_one_codes: >-
     {{ cfg_language_one | default('nl,en') | lower | regex_findall('[a-z]{2}') }}
@@ -299,6 +300,7 @@ action:
             value_template: "{{ translation_success | bool }}"
         sequence:
           - service: "{{ selected_notify_service }}"
+            continue_on_error: true
             data:
               target:
                 - "{{ source_chat_id }}"
@@ -308,6 +310,7 @@ action:
                 reaction_add: "{{ source_lang_reaction }}"
     default:
       - service: "{{ selected_notify_service }}"
+        continue_on_error: true
         data:
           target:
             - "{{ source_chat_id }}"
@@ -315,3 +318,12 @@ action:
           data:
             reply_to_message_id: "{{ source_message_id }}"
             reaction_add: "{{ cfg_reaction_fail }}"
+
+  - service: "{{ selected_notify_service }}"
+    continue_on_error: true
+    data:
+      target:
+        - "{{ source_chat_id }}"
+      message: ""
+      data:
+        mark_unread: true
