@@ -83,7 +83,10 @@ Future agents should follow these defaults unless the user explicitly asks other
   - explicit reaction override via `data.reaction_add` (alias `data.reaction`) + `reply_to_message_id`
   - optional `data.reaction_toggle: true` for toggle behavior
   - default reaction behavior is additive/set (non-toggle) unless toggle explicitly requested
-- Keep verbose diagnostic logs for route decision (`react_message` vs `send_message`).
+- Keep verbose diagnostic logs for route decision (`react_message` vs `send_message` vs `mark_unread`).
+- `data.mark_unread: true` marks the resolved chat unread via RPC `mark_unread` (`chat.markUnread()`).
+  When combined with send, media, or reaction, unread is applied after that operation.
+  An empty message with no reaction only marks the chat unread.
 
 ## 9) Translation automation blueprint defaults
 
@@ -103,6 +106,7 @@ File: `docs/automation-translate-home-assistant-chat.yaml`
   - fail: replace with question icon
 - Loop-prevention prefix regex is built dynamically from target/source primary flags + globe (defaults to `^(🇵🇹|🇳🇱|🌐)`).
 - Translation message is posted as regular message (not quoted reply).
+- After the final success or fail reaction, mark the conversation unread with `data.mark_unread: true`.
 - Automation should be defensive against missing response variables and service/network failures.
 
 ## 10) Ping/pong template safety

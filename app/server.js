@@ -830,7 +830,7 @@ const findChatFromChatList = async (activeClient, normalizedChatId) => {
   );
 };
 
-const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" }) => {
+const loadChatById = async (chatId) => {
   const normalizedChatId = typeof chatId === "string" ? chatId.trim() : "";
   if (!normalizedChatId) {
     throw new Error("Missing chatId");
@@ -843,12 +843,6 @@ const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" })
     throw new Error("Client does not support getChatById");
   }
 
-  const normalizedLimit = toIntegerWithinRange(limit, {
-    defaultValue: 20,
-    min: 1,
-    max: 200,
-  });
-  const normalizedBodyPrefix = typeof bodyPrefix === "string" ? bodyPrefix : "";
   let chat = null;
   try {
     chat = await withWaitForChatLoadingRetry({
@@ -879,6 +873,38 @@ const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" })
   if (!chat) {
     throw new Error(`Chat '${normalizedChatId}' not found`);
   }
+  return { activeClient, chat, chatId: normalizedChatId };
+};
+
+const markChatUnreadById = async (chatId) => {
+  const { activeClient, chat, chatId: normalizedChatId } = await loadChatById(chatId);
+  logServer("info", "RPC mark_unread params", {
+    chatId: normalizedChatId,
+  });
+  if (typeof chat.markUnread === "function") {
+    await chat.markUnread();
+  } else if (typeof activeClient.markChatUnread === "function") {
+    await activeClient.markChatUnread(normalizedChatId);
+  } else {
+    throw new Error("Client does not support markUnread");
+  }
+  logServer("info", "RPC mark_unread applied", {
+    chatId: normalizedChatId,
+  });
+  return {
+    chatId: normalizedChatId,
+    unread: true,
+  };
+};
+
+const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" }) => {
+  const normalizedLimit = toIntegerWithinRange(limit, {
+    defaultValue: 20,
+    min: 1,
+    max: 200,
+  });
+  const normalizedBodyPrefix = typeof bodyPrefix === "string" ? bodyPrefix : "";
+  const { chat, chatId: normalizedChatId } = await loadChatById(chatId);
   if (typeof chat.fetchMessages !== "function") {
     throw new Error(`Chat '${normalizedChatId}' does not support fetchMessages`);
   }
@@ -1117,6 +1143,14 @@ const handleWsRpcRequest = async (rpcPayload) => {
         throw new Error("Missing params.messageId for delete_message");
       }
       return deleteMessageById({ messageId: params.messageId, everyone: params.everyone });
+    }
+
+    case "mark_unread": {
+      const chatId = typeof params.chatId === "string" ? params.chatId.trim() : "";
+      if (!chatId) {
+        throw new Error("Missing params.chatId for mark_unread");
+      }
+      return markChatUnreadById(chatId);
     }
 
     case "list_messages": {

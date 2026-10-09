@@ -1,5 +1,7 @@
 ## Unreleased (2026-02-27)
 
+- Notify and websocket RPC can mark a chat unread (`data.mark_unread` / `mark_unread`).
+- The chat translator blueprint marks the conversation unread after the final reaction.
 - Send-test now falls back to a raw WhatsApp chat-id edit box when the channel list fetch fails.
 - Hotswap accepts a full GitHub path + branch (for example `https://github.com/wwebjs/whatsapp-web.js/tree/stealth`).
 - Hotswap prepends `[Other github repo]` above Built-in to reveal the custom GitHub URL input.

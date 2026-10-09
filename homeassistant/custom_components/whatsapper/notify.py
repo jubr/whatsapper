@@ -37,6 +37,7 @@ ATTR_REPLY_TO_MESSAGE_ID = "reply_to_message_id"
 ATTR_REACTION_TOGGLE = "reaction_toggle"
 ATTR_REACTION_ADD = "reaction_add"
 ATTR_REACTION = "reaction"
+ATTR_MARK_UNREAD = "mark_unread"
 ATTR_EDIT_MESSAGE_ID = "edit_message_id"
 ATTR_DELETE_MESSAGE_ID = "delete_message_id"
 ATTR_DELETE_FOR_EVERYONE = "delete_for_everyone"
@@ -165,6 +166,29 @@ class WhatsapperNotificationService(BaseNotificationService):
             _LOGGER.error("Failed to resolve chat target '%s': %s", target, err)
             return None
 
+    async def _resolve_requested_chat_id(self, target: Any) -> str | None:
+        if isinstance(target, list):
+            target_value = target[0] if target else None
+        else:
+            target_value = target if target else None
+
+        if target_value:
+            return await self._resolve_chat_id(str(target_value))
+        if self.chat_id:
+            return self.chat_id
+        if self.chat_name:
+            return await self._resolve_chat_id_from_name(self.chat_name)
+        return None
+
+    async def _mark_chat_unread(self, chat_id: str) -> None:
+        _LOGGER.info("Notify route: mark_unread | chat_id=%s", chat_id)
+        await self._ws_rpc_request(
+            "mark_unread",
+            {
+                "chatId": chat_id,
+            },
+        )
+
     async def async_send_message(self, message="", **kwargs):
         """Send a message to the target."""
         chat_id = None
@@ -176,6 +200,7 @@ class WhatsapperNotificationService(BaseNotificationService):
             delete_for_everyone = False
             reaction_toggle = False
             reaction_add = None
+            mark_unread = False
             if isinstance(data, dict):
                 reply_candidate = data.get(ATTR_REPLY_TO_MESSAGE_ID)
                 if isinstance(reply_candidate, str) and reply_candidate.strip():
@@ -184,6 +209,8 @@ class WhatsapperNotificationService(BaseNotificationService):
                 delete_message_id = self._extract_message_id(data.get(ATTR_DELETE_MESSAGE_ID))
                 delete_for_everyone = self._to_bool(data.get(ATTR_DELETE_FOR_EVERYONE), False)
                 reaction_toggle = self._to_bool(data.get(ATTR_REACTION_TOGGLE), False)
+                if ATTR_MARK_UNREAD in data:
+                    mark_unread = self._to_bool(data.get(ATTR_MARK_UNREAD), False)
                 explicit_reaction = data.get(ATTR_REACTION_ADD)
                 if explicit_reaction is None:
                     explicit_reaction = data.get(ATTR_REACTION)
@@ -222,6 +249,8 @@ class WhatsapperNotificationService(BaseNotificationService):
 
             if not reaction_toggle:
                 reaction_toggle = self._to_bool(kwargs.get(ATTR_REACTION_TOGGLE), False)
+            if not mark_unread and ATTR_MARK_UNREAD in kwargs:
+                mark_unread = self._to_bool(kwargs.get(ATTR_MARK_UNREAD), False)
 
             title = kwargs.get(ATTR_TITLE)
             raw_message = "" if message is None else str(message)
@@ -230,12 +259,13 @@ class WhatsapperNotificationService(BaseNotificationService):
 
             reaction_candidate = reaction_add or self._extract_reaction_candidate(msg)
             _LOGGER.info(
-                "Notify payload parsed | has_data=%s reply_to=%s reaction_add=%s message_trim_len=%d toggle=%s",
+                "Notify payload parsed | has_data=%s reply_to=%s reaction_add=%s message_trim_len=%d toggle=%s mark_unread=%s",
                 isinstance(data, dict),
                 bool(reply_to_message_id),
                 reaction_candidate,
                 len(msg.strip()),
                 reaction_toggle,
+                mark_unread,
             )
             if edit_message_id:
                 if not msg.strip():
@@ -293,20 +323,17 @@ class WhatsapperNotificationService(BaseNotificationService):
                         "toggle": reaction_toggle,
                     },
                 )
+                if mark_unread:
+                    chat_id = await self._resolve_requested_chat_id(kwargs.get(ATTR_TARGET))
+                    if chat_id:
+                        await self._mark_chat_unread(chat_id)
+                    else:
+                        _LOGGER.error(
+                            "Notify route: mark_unread skipped because chat target could not be resolved"
+                        )
                 return
 
-            target = kwargs.get(ATTR_TARGET)
-            if isinstance(target, list):
-                target_value = target[0] if target else None
-            else:
-                target_value = target if target else None
-
-            if target_value:
-                chat_id = await self._resolve_chat_id(str(target_value))
-            elif self.chat_id:
-                chat_id = self.chat_id
-            elif self.chat_name:
-                chat_id = await self._resolve_chat_id_from_name(self.chat_name)
+            chat_id = await self._resolve_requested_chat_id(kwargs.get(ATTR_TARGET))
 
             if not chat_id:
                 _LOGGER.error(
@@ -314,7 +341,14 @@ class WhatsapperNotificationService(BaseNotificationService):
                 )
                 return
 
-            if data and all(attr in data for attr in [ATTR_IMAGE, ATTR_IMAGE_TYPE, ATTR_IMAGE_NAME]):
+            has_media = bool(
+                data and all(attr in data for attr in [ATTR_IMAGE, ATTR_IMAGE_TYPE, ATTR_IMAGE_NAME])
+            )
+            if mark_unread and not msg.strip() and not has_media:
+                await self._mark_chat_unread(chat_id)
+                return
+
+            if has_media:
                 _LOGGER.info("Notify route: send_media | chat_id=%s", chat_id)
                 await self._ws_rpc_request(
                     "send_media",
@@ -325,6 +359,8 @@ class WhatsapperNotificationService(BaseNotificationService):
                         "filename": data[ATTR_IMAGE_NAME],
                     },
                 )
+                if mark_unread:
+                    await self._mark_chat_unread(chat_id)
                 return
 
             _LOGGER.info(
@@ -341,6 +377,8 @@ class WhatsapperNotificationService(BaseNotificationService):
                     **({"quotedMessageId": reply_to_message_id} if reply_to_message_id else {}),
                 },
             )
+            if mark_unread:
+                await self._mark_chat_unread(chat_id)
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.error("Sending to %s failed: %s", chat_id, err)
 

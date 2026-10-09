@@ -184,6 +184,22 @@ Behavior:
   - `delete_for_everyone` controls delete mode.
   - `target`/chat resolution is not required.
 - Edit/delete routing has priority over reaction/send routing.
+- Set `data.mark_unread: true` to mark the resolved chat unread after the
+  send, media, or reaction in the same call. With an empty message and no
+  reaction, the call only marks the chat unread (`mark_unread` RPC, which
+  calls `chat.markUnread()`).
+
+Example: mark a chat unread
+
+```yaml
+service: notify.whatsapper
+data:
+  target:
+    - "12345@c.us"
+  message: ""
+  data:
+    mark_unread: true
+```
 
 Example: edit a previously sent message
 
@@ -251,6 +267,7 @@ If you are already connected to `/api/v1/events/ws`, you can also use:
 
 - `action: "edit_message"` with params `{ "messageId": "...", "message": "..." }`
 - `action: "delete_message"` with params `{ "messageId": "...", "everyone": false }`
+- `action: "mark_unread"` with params `{ "chatId": "12345@g.us" }`
 - `action: "list_messages"` with params:
   - required: `{ "chatId": "12345@g.us" }`
   - optional filters: `limit` (1-200), `fromMe` (boolean), `bodyPrefix` (string)
@@ -329,4 +346,4 @@ See:
 
 It takes `chat_name` and WhatsApp service name as blueprint inputs, calls the public Google translate endpoint,
 supports configurable language groups, posts the translated text as a regular message,
-and uses message reactions for fast progress/fail/success state.
+uses message reactions for fast progress/fail/success state, then marks the chat unread.
