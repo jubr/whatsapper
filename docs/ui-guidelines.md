@@ -84,3 +84,16 @@ Rows are rendered as fixed options with icons and routes:
 - Logs page should consume a unified stream (runtime + server + WS + RPC).
 - Present logs as human-readable plain text (no JSON blobs in UI stream).
 
+## 10) Send test message
+
+- Prefer the recent-chat channel dropdown when `GET /api/v1/chats` succeeds.
+- When that channel-id fetch fails (or returns no chats), show a raw WhatsApp chat-id edit box so a custom id such as `1234567890@c.us` or `1203630…@g.us` can still be sent.
+
+## 11) Hotswap custom GitHub refs
+
+- Keep the discovered tag/branch dropdown.
+- Prepend `[Other github repo]` above `[Built-in]`; that option reveals the (otherwise hidden) GitHub URL input.
+- Accept a full GitHub path + branch, for example `https://github.com/wwebjs/whatsapp-web.js/tree/stealth`.
+- Persist the selected whatsapp-web URI; clear it when `[Built-in]` is selected.
+- Cache GitHub ref fetches for 1 week. If a fetch fails, serve the cache and show `Seeing results cached from YYYY-MM-DD hh:mm:ss`.
+

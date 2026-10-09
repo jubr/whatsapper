@@ -267,10 +267,18 @@
     <p><a href=".">Back</a></p>
 
     <div class="form-group">
-      <label for="chatSelect">Channel</label>
+      <label for="chatSelect" id="chatFieldLabel">Channel</label>
       <select id="chatSelect" disabled>
         <option value="">Loading recent chats…</option>
       </select>
+      <input
+        type="text"
+        id="chatIdInput"
+        hidden
+        placeholder="e.g. 1203630…@g.us or 1234567890@c.us"
+        spellcheck="false"
+        autocomplete="off"
+      />
       <div class="chat-load-hint" id="chatLoadHint"></div>
     </div>
 
@@ -293,11 +301,14 @@
     const LS_MESSAGE_KEY = "send_test_message";
 
     const chatSelect = document.getElementById("chatSelect");
+    const chatIdInput = document.getElementById("chatIdInput");
+    const chatFieldLabel = document.getElementById("chatFieldLabel");
     const messageInput = document.getElementById("messageInput");
     const sendBtn = document.getElementById("sendBtn");
     const statusMsg = document.getElementById("statusMsg");
     const chatLoadHint = document.getElementById("chatLoadHint");
     const headerSubtitle = document.getElementById("headerSubtitle");
+    let customChatIdMode = false;
 
     const getBasePath = () => {
       const pathname = location.pathname || "/";
@@ -316,18 +327,49 @@
       statusMsg.className = "status-msg" + (kind ? " " + kind : "");
     };
 
+    const getChatId = () => {
+      if (customChatIdMode) {
+        return chatIdInput.value.trim();
+      }
+      return (chatSelect.value || "").trim();
+    };
+
     const updateSendReady = () => {
-      const chatReady = chatSelect.value && chatSelect.value !== "";
-      sendBtn.disabled = !chatReady;
+      sendBtn.disabled = !getChatId();
     };
 
     const persistSelections = () => {
       try {
-        const selectedOption = chatSelect.options[chatSelect.selectedIndex];
-        localStorage.setItem(LS_CHAT_KEY, chatSelect.value);
-        localStorage.setItem(LS_CHAT_NAME_KEY, selectedOption ? selectedOption.textContent : "");
+        if (customChatIdMode) {
+          localStorage.setItem(LS_CHAT_KEY, chatIdInput.value.trim());
+          localStorage.setItem(LS_CHAT_NAME_KEY, chatIdInput.value.trim());
+        } else {
+          const selectedOption = chatSelect.options[chatSelect.selectedIndex];
+          localStorage.setItem(LS_CHAT_KEY, chatSelect.value);
+          localStorage.setItem(LS_CHAT_NAME_KEY, selectedOption ? selectedOption.textContent : "");
+        }
         localStorage.setItem(LS_MESSAGE_KEY, messageInput.value);
       } catch (_) {}
+    };
+
+    const enableCustomChatId = (hintText) => {
+      customChatIdMode = true;
+      chatSelect.hidden = true;
+      chatSelect.disabled = true;
+      chatIdInput.hidden = false;
+      chatIdInput.disabled = false;
+      chatFieldLabel.setAttribute("for", "chatIdInput");
+      chatFieldLabel.textContent = "Channel (raw chat ID)";
+      chatLoadHint.textContent =
+        hintText || "Could not load chats. Enter a raw WhatsApp chat ID.";
+      headerSubtitle.textContent = "Enter a raw WhatsApp chat ID";
+      try {
+        const savedId = localStorage.getItem(LS_CHAT_KEY);
+        if (savedId && !chatIdInput.value) {
+          chatIdInput.value = savedId;
+        }
+      } catch (_) {}
+      updateSendReady();
     };
 
     const restoreMessage = () => {
@@ -350,8 +392,7 @@
         if (!response.ok) {
           const body = await response.json().catch(() => ({}));
           const errText = body?.error || `HTTP ${response.status}`;
-          chatSelect.innerHTML = `<option value="">Failed to load chats: ${errText}</option>`;
-          chatLoadHint.textContent = errText;
+          enableCustomChatId(`Failed to load chats (${errText}). Enter a raw WhatsApp chat ID.`);
           return;
         }
         const data = await response.json();
@@ -381,11 +422,15 @@
           }
         } catch (_) {}
 
+        if (recent.length === 0) {
+          enableCustomChatId("No chats returned. Enter a raw WhatsApp chat ID.");
+          return;
+        }
+
         chatLoadHint.textContent = `Showing ${recent.length} most recent chat${recent.length !== 1 ? "s" : ""}`;
         updateSendReady();
       } catch (error) {
-        chatSelect.innerHTML = `<option value="">Error: ${error.message}</option>`;
-        chatLoadHint.textContent = error.message;
+        enableCustomChatId(`Failed to load chats (${error.message}). Enter a raw WhatsApp chat ID.`);
       }
     };
 
@@ -401,15 +446,25 @@
       setStatus("", "");
     });
 
+    chatIdInput.addEventListener("input", () => {
+      persistSelections();
+      updateSendReady();
+      headerSubtitle.textContent = chatIdInput.value.trim() || "Enter a raw WhatsApp chat ID";
+      setStatus("", "");
+    });
+
     messageInput.addEventListener("input", () => {
       persistSelections();
     });
 
     sendBtn.addEventListener("click", async () => {
-      const chatId = chatSelect.value;
+      const chatId = getChatId();
       const message = messageInput.value.trim() || "Testing";
       if (!chatId) {
-        setStatus("Please select a channel first.", "err");
+        setStatus(
+          customChatIdMode ? "Please enter a raw WhatsApp chat ID." : "Please select a channel first.",
+          "err",
+        );
         return;
       }
 
