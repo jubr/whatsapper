@@ -880,54 +880,39 @@ const loadChatById = async (chatId) => {
 // Re-apply unread once that follow-up seen has settled.
 const MARK_UNREAD_RETRY_DELAYS_MS = [700, 1200];
 
-const releaseOpenChat = async (activeClient, chatId) => {
+const closeActiveChatIfTarget = async (activeClient, chatId) => {
   if (!activeClient?.pupPage || typeof activeClient.pupPage.evaluate !== "function") {
-    return { found: false, closed: false };
+    return { closedActive: false };
   }
-  try {
-    return await activeClient.pupPage.evaluate(async (targetChatId) => {
-      const chatModel = await window.WWebJS.getChat(targetChatId, { getAsModel: false });
-      if (!chatModel) {
-        return { found: false, closed: false };
-      }
-      const cmd = window.require?.("WAWebCmd")?.Cmd || window.Store?.Cmd || null;
-      const active =
-        (typeof cmd?.getActiveChat === "function" && cmd.getActiveChat()) ||
-        window.Store?.Chat?.getActive?.() ||
-        null;
-      const activeId =
-        active?.id?._serialized || (typeof active?.id === "string" ? active.id : null);
-      if (activeId !== targetChatId) {
-        return { found: true, closed: false };
-      }
-      if (typeof cmd?.closeChat === "function") {
-        await cmd.closeChat(chatModel);
-        return { found: true, closed: true };
-      }
-      if (typeof cmd?.closeActiveChat === "function") {
-        await cmd.closeActiveChat();
-        return { found: true, closed: true };
-      }
-      return { found: true, closed: false };
-    }, chatId);
-  } catch (error) {
-    logServer("warn", "RPC mark_unread could not release open chat", {
-      chatId,
-      error: String(error?.message || error),
-    });
-    return { found: false, closed: false };
-  }
+  return activeClient.pupPage.evaluate(async (targetChatId) => {
+    const cmd = window.require?.("WAWebCmd")?.Cmd || window.Store?.Cmd || null;
+    if (!cmd || typeof cmd.getActiveChat !== "function") {
+      return { closedActive: false };
+    }
+    const active = cmd.getActiveChat();
+    const activeId =
+      active?.id?._serialized || (typeof active?.id === "string" ? active.id : "");
+    if (!active || activeId !== targetChatId) {
+      return { closedActive: false };
+    }
+    if (typeof cmd.closeChat !== "function") {
+      throw new Error("Cmd.closeChat is not available");
+    }
+    await cmd.closeChat(active);
+    return { closedActive: true };
+  }, chatId);
 };
 
 const applyChatUnread = async (activeClient, chat, chatId) => {
-  const released = await releaseOpenChat(activeClient, chatId);
+  const focus = await closeActiveChatIfTarget(activeClient, chatId);
+  const closedActive = focus?.closedActive === true;
   if (typeof chat.markUnread === "function") {
     await chat.markUnread();
-    return { method: "chat.markUnread", released };
+    return { method: "chat.markUnread", closedActive };
   }
   if (typeof activeClient.markChatUnread === "function") {
     await activeClient.markChatUnread(chatId);
-    return { method: "client.markChatUnread", released };
+    return { method: "client.markChatUnread", closedActive };
   }
   throw new Error("Client does not support markUnread");
 };
@@ -948,7 +933,7 @@ const markChatUnreadById = async (chatId) => {
       attempt: attempts,
       reason,
       method: applied.method,
-      closedActive: String(Boolean(applied.released?.closed)),
+      closedActive: String(applied.closedActive === true),
     });
   };
   await applyOnce("initial");
