@@ -830,7 +830,7 @@ const findChatFromChatList = async (activeClient, normalizedChatId) => {
   );
 };
 
-const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" }) => {
+const loadChatById = async (chatId) => {
   const normalizedChatId = typeof chatId === "string" ? chatId.trim() : "";
   if (!normalizedChatId) {
     throw new Error("Missing chatId");
@@ -843,12 +843,6 @@ const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" })
     throw new Error("Client does not support getChatById");
   }
 
-  const normalizedLimit = toIntegerWithinRange(limit, {
-    defaultValue: 20,
-    min: 1,
-    max: 200,
-  });
-  const normalizedBodyPrefix = typeof bodyPrefix === "string" ? bodyPrefix : "";
   let chat = null;
   try {
     chat = await withWaitForChatLoadingRetry({
@@ -879,6 +873,102 @@ const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" })
   if (!chat) {
     throw new Error(`Chat '${normalizedChatId}' not found`);
   }
+  return { activeClient, chat, chatId: normalizedChatId };
+};
+
+// Sending a message marks the open chat read again after sendMessage resolves.
+// Re-apply unread once that follow-up seen has settled.
+const MARK_UNREAD_RETRY_DELAYS_MS = [700, 1200];
+
+const closeActiveChatIfTarget = async (activeClient, chatId) => {
+  if (!activeClient?.pupPage || typeof activeClient.pupPage.evaluate !== "function") {
+    return { closedActive: false };
+  }
+  return activeClient.pupPage.evaluate(async (targetChatId) => {
+    const cmd = window.require?.("WAWebCmd")?.Cmd || window.Store?.Cmd || null;
+    if (!cmd || typeof cmd.getActiveChat !== "function") {
+      return { closedActive: false };
+    }
+    const active = cmd.getActiveChat();
+    const activeId =
+      active?.id?._serialized || (typeof active?.id === "string" ? active.id : "");
+    if (!active || activeId !== targetChatId) {
+      return { closedActive: false };
+    }
+    if (typeof cmd.closeChat !== "function") {
+      throw new Error("Cmd.closeChat is not available");
+    }
+    await cmd.closeChat(active);
+    return { closedActive: true };
+  }, chatId);
+};
+
+const applyChatUnread = async (activeClient, chat, chatId) => {
+  const focus = await closeActiveChatIfTarget(activeClient, chatId);
+  const closedActive = focus?.closedActive === true;
+  if (typeof chat.markUnread === "function") {
+    await chat.markUnread();
+    return { method: "chat.markUnread", closedActive };
+  }
+  if (typeof activeClient.markChatUnread === "function") {
+    await activeClient.markChatUnread(chatId);
+    return { method: "client.markChatUnread", closedActive };
+  }
+  throw new Error("Client does not support markUnread");
+};
+
+const markChatUnreadById = async (chatId) => {
+  const { activeClient, chat, chatId: normalizedChatId } = await loadChatById(chatId);
+  logServer("info", "RPC mark_unread params", {
+    chatId: normalizedChatId,
+  });
+  let method = "unknown";
+  let attempts = 0;
+  const applyOnce = async (reason) => {
+    const applied = await applyChatUnread(activeClient, chat, normalizedChatId);
+    attempts += 1;
+    method = applied.method;
+    logServer("info", "RPC mark_unread attempt", {
+      chatId: normalizedChatId,
+      attempt: attempts,
+      reason,
+      method: applied.method,
+      closedActive: String(applied.closedActive === true),
+    });
+  };
+  await applyOnce("initial");
+  for (const waitMs of MARK_UNREAD_RETRY_DELAYS_MS) {
+    await delay(waitMs);
+    try {
+      await applyOnce(`retry-${waitMs}ms`);
+    } catch (error) {
+      logServer("warn", "RPC mark_unread retry failed", {
+        chatId: normalizedChatId,
+        waitMs,
+        error: String(error?.message || error),
+      });
+    }
+  }
+  logServer("info", "RPC mark_unread applied", {
+    chatId: normalizedChatId,
+    method,
+    attempts,
+  });
+  return {
+    chatId: normalizedChatId,
+    unread: true,
+    attempts,
+  };
+};
+
+const listChatMessages = async ({ chatId, limit = 20, fromMe, bodyPrefix = "" }) => {
+  const normalizedLimit = toIntegerWithinRange(limit, {
+    defaultValue: 20,
+    min: 1,
+    max: 200,
+  });
+  const normalizedBodyPrefix = typeof bodyPrefix === "string" ? bodyPrefix : "";
+  const { chat, chatId: normalizedChatId } = await loadChatById(chatId);
   if (typeof chat.fetchMessages !== "function") {
     throw new Error(`Chat '${normalizedChatId}' does not support fetchMessages`);
   }
@@ -1011,19 +1101,32 @@ const handleWsRpcRequest = async (rpcPayload) => {
       if (!activeClient) {
         throw new Error("Client not initialized");
       }
+      const markUnread = toBooleanFlag(params.markUnread);
       logServer("info", "RPC send_message params", {
         chatId: chatId || "-",
         quotedMessageId: quotedMessageId || "-",
         messageLength: message.length,
+        markUnread,
       });
-      const sendOptions = quotedMessageId ? { quotedMessageId } : undefined;
-      const response = sendOptions
-        ? await activeClient.sendMessage(chatId, message, sendOptions)
-        : await activeClient.sendMessage(chatId, message);
+      const sendOptions = {};
+      if (quotedMessageId) {
+        sendOptions.quotedMessageId = quotedMessageId;
+      }
+      // A send marks the open chat read. Skip that when the caller also wants it unread.
+      if (markUnread) {
+        sendOptions.sendSeen = false;
+      }
+      const response = await activeClient.sendMessage(
+        chatId,
+        message,
+        Object.keys(sendOptions).length > 0 ? sendOptions : undefined,
+      );
+      const unreadResult = markUnread ? await markChatUnreadById(chatId) : null;
       return {
         chatId,
         messageId: response?.id?._serialized || null,
         quotedMessageId: quotedMessageId || null,
+        unread: Boolean(unreadResult?.unread),
       };
     }
 
@@ -1039,10 +1142,19 @@ const handleWsRpcRequest = async (rpcPayload) => {
       if (!activeClient) {
         throw new Error("Client not initialized");
       }
+      const markUnread = toBooleanFlag(params.markUnread);
       const MessageMedia = getMessageMediaClass();
       const media = new MessageMedia(mimeType, data, filename);
-      const response = await activeClient.sendMessage(chatId, media);
-      return { chatId, messageId: response?.id?._serialized || null };
+      const sendOptions = markUnread ? { sendSeen: false } : undefined;
+      const response = sendOptions
+        ? await activeClient.sendMessage(chatId, media, sendOptions)
+        : await activeClient.sendMessage(chatId, media);
+      const unreadResult = markUnread ? await markChatUnreadById(chatId) : null;
+      return {
+        chatId,
+        messageId: response?.id?._serialized || null,
+        unread: Boolean(unreadResult?.unread),
+      };
     }
 
     case "react_message": {
@@ -1117,6 +1229,14 @@ const handleWsRpcRequest = async (rpcPayload) => {
         throw new Error("Missing params.messageId for delete_message");
       }
       return deleteMessageById({ messageId: params.messageId, everyone: params.everyone });
+    }
+
+    case "mark_unread": {
+      const chatId = typeof params.chatId === "string" ? params.chatId.trim() : "";
+      if (!chatId) {
+        throw new Error("Missing params.chatId for mark_unread");
+      }
+      return markChatUnreadById(chatId);
     }
 
     case "list_messages": {
