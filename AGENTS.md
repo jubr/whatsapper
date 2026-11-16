@@ -85,7 +85,8 @@ Future agents should follow these defaults unless the user explicitly asks other
   - default reaction behavior is additive/set (non-toggle) unless toggle explicitly requested
 - Keep verbose diagnostic logs for route decision (`react_message` vs `send_message` vs `mark_unread`).
 - `data.mark_unread: true` marks the resolved chat unread via RPC `mark_unread` (`chat.markUnread()`).
-  When combined with send, media, or reaction, unread is applied after that operation.
+  When combined with send or media, the same RPC sends with `sendSeen: false` and then re-applies
+  unread after the open chat settles. A reaction still marks unread afterwards.
   An empty message with no reaction only marks the chat unread.
 
 ## 9) Translation automation blueprint defaults

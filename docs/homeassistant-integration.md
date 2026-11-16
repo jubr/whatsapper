@@ -185,7 +185,9 @@ Behavior:
   - `target`/chat resolution is not required.
 - Edit/delete routing has priority over reaction/send routing.
 - Set `data.mark_unread: true` to mark the resolved chat unread after the
-  send, media, or reaction in the same call. With an empty message and no
+  send, media, or reaction in the same call. A combined send uses
+  `sendSeen: false` and re-applies unread after the send settles, so the
+  outgoing message does not clear the badge. With an empty message and no
   reaction, the call only marks the chat unread (`mark_unread` RPC, which
   calls `chat.markUnread()`).
 

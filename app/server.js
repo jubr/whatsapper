@@ -876,24 +876,103 @@ const loadChatById = async (chatId) => {
   return { activeClient, chat, chatId: normalizedChatId };
 };
 
+// Sending a message marks the open chat read again after sendMessage resolves.
+// Re-apply unread once that follow-up seen has settled.
+const MARK_UNREAD_RETRY_DELAYS_MS = [700, 1200];
+
+const releaseOpenChat = async (activeClient, chatId) => {
+  if (!activeClient?.pupPage || typeof activeClient.pupPage.evaluate !== "function") {
+    return { found: false, closed: false };
+  }
+  try {
+    return await activeClient.pupPage.evaluate(async (targetChatId) => {
+      const chatModel = await window.WWebJS.getChat(targetChatId, { getAsModel: false });
+      if (!chatModel) {
+        return { found: false, closed: false };
+      }
+      const cmd = window.require?.("WAWebCmd")?.Cmd || window.Store?.Cmd || null;
+      const active =
+        (typeof cmd?.getActiveChat === "function" && cmd.getActiveChat()) ||
+        window.Store?.Chat?.getActive?.() ||
+        null;
+      const activeId =
+        active?.id?._serialized || (typeof active?.id === "string" ? active.id : null);
+      if (activeId !== targetChatId) {
+        return { found: true, closed: false };
+      }
+      if (typeof cmd?.closeChat === "function") {
+        await cmd.closeChat(chatModel);
+        return { found: true, closed: true };
+      }
+      if (typeof cmd?.closeActiveChat === "function") {
+        await cmd.closeActiveChat();
+        return { found: true, closed: true };
+      }
+      return { found: true, closed: false };
+    }, chatId);
+  } catch (error) {
+    logServer("warn", "RPC mark_unread could not release open chat", {
+      chatId,
+      error: String(error?.message || error),
+    });
+    return { found: false, closed: false };
+  }
+};
+
+const applyChatUnread = async (activeClient, chat, chatId) => {
+  const released = await releaseOpenChat(activeClient, chatId);
+  if (typeof chat.markUnread === "function") {
+    await chat.markUnread();
+    return { method: "chat.markUnread", released };
+  }
+  if (typeof activeClient.markChatUnread === "function") {
+    await activeClient.markChatUnread(chatId);
+    return { method: "client.markChatUnread", released };
+  }
+  throw new Error("Client does not support markUnread");
+};
+
 const markChatUnreadById = async (chatId) => {
   const { activeClient, chat, chatId: normalizedChatId } = await loadChatById(chatId);
   logServer("info", "RPC mark_unread params", {
     chatId: normalizedChatId,
   });
-  if (typeof chat.markUnread === "function") {
-    await chat.markUnread();
-  } else if (typeof activeClient.markChatUnread === "function") {
-    await activeClient.markChatUnread(normalizedChatId);
-  } else {
-    throw new Error("Client does not support markUnread");
+  let method = "unknown";
+  let attempts = 0;
+  const applyOnce = async (reason) => {
+    const applied = await applyChatUnread(activeClient, chat, normalizedChatId);
+    attempts += 1;
+    method = applied.method;
+    logServer("info", "RPC mark_unread attempt", {
+      chatId: normalizedChatId,
+      attempt: attempts,
+      reason,
+      method: applied.method,
+      closedActive: String(Boolean(applied.released?.closed)),
+    });
+  };
+  await applyOnce("initial");
+  for (const waitMs of MARK_UNREAD_RETRY_DELAYS_MS) {
+    await delay(waitMs);
+    try {
+      await applyOnce(`retry-${waitMs}ms`);
+    } catch (error) {
+      logServer("warn", "RPC mark_unread retry failed", {
+        chatId: normalizedChatId,
+        waitMs,
+        error: String(error?.message || error),
+      });
+    }
   }
   logServer("info", "RPC mark_unread applied", {
     chatId: normalizedChatId,
+    method,
+    attempts,
   });
   return {
     chatId: normalizedChatId,
     unread: true,
+    attempts,
   };
 };
 
@@ -1037,19 +1116,32 @@ const handleWsRpcRequest = async (rpcPayload) => {
       if (!activeClient) {
         throw new Error("Client not initialized");
       }
+      const markUnread = toBooleanFlag(params.markUnread);
       logServer("info", "RPC send_message params", {
         chatId: chatId || "-",
         quotedMessageId: quotedMessageId || "-",
         messageLength: message.length,
+        markUnread,
       });
-      const sendOptions = quotedMessageId ? { quotedMessageId } : undefined;
-      const response = sendOptions
-        ? await activeClient.sendMessage(chatId, message, sendOptions)
-        : await activeClient.sendMessage(chatId, message);
+      const sendOptions = {};
+      if (quotedMessageId) {
+        sendOptions.quotedMessageId = quotedMessageId;
+      }
+      // A send marks the open chat read. Skip that when the caller also wants it unread.
+      if (markUnread) {
+        sendOptions.sendSeen = false;
+      }
+      const response = await activeClient.sendMessage(
+        chatId,
+        message,
+        Object.keys(sendOptions).length > 0 ? sendOptions : undefined,
+      );
+      const unreadResult = markUnread ? await markChatUnreadById(chatId) : null;
       return {
         chatId,
         messageId: response?.id?._serialized || null,
         quotedMessageId: quotedMessageId || null,
+        unread: Boolean(unreadResult?.unread),
       };
     }
 
@@ -1065,10 +1157,19 @@ const handleWsRpcRequest = async (rpcPayload) => {
       if (!activeClient) {
         throw new Error("Client not initialized");
       }
+      const markUnread = toBooleanFlag(params.markUnread);
       const MessageMedia = getMessageMediaClass();
       const media = new MessageMedia(mimeType, data, filename);
-      const response = await activeClient.sendMessage(chatId, media);
-      return { chatId, messageId: response?.id?._serialized || null };
+      const sendOptions = markUnread ? { sendSeen: false } : undefined;
+      const response = sendOptions
+        ? await activeClient.sendMessage(chatId, media, sendOptions)
+        : await activeClient.sendMessage(chatId, media);
+      const unreadResult = markUnread ? await markChatUnreadById(chatId) : null;
+      return {
+        chatId,
+        messageId: response?.id?._serialized || null,
+        unread: Boolean(unreadResult?.unread),
+      };
     }
 
     case "react_message": {

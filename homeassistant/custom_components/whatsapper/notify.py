@@ -349,7 +349,11 @@ class WhatsapperNotificationService(BaseNotificationService):
                 return
 
             if has_media:
-                _LOGGER.info("Notify route: send_media | chat_id=%s", chat_id)
+                _LOGGER.info(
+                    "Notify route: send_media | chat_id=%s mark_unread=%s",
+                    chat_id,
+                    mark_unread,
+                )
                 await self._ws_rpc_request(
                     "send_media",
                     {
@@ -357,17 +361,17 @@ class WhatsapperNotificationService(BaseNotificationService):
                         "mimeType": data[ATTR_IMAGE_TYPE],
                         "data": data[ATTR_IMAGE],
                         "filename": data[ATTR_IMAGE_NAME],
+                        **({"markUnread": True} if mark_unread else {}),
                     },
                 )
-                if mark_unread:
-                    await self._mark_chat_unread(chat_id)
                 return
 
             _LOGGER.info(
-                "Notify route: send_message | chat_id=%s quoted=%s message_len=%d",
+                "Notify route: send_message | chat_id=%s quoted=%s message_len=%d mark_unread=%s",
                 chat_id,
                 bool(reply_to_message_id),
                 len(msg),
+                mark_unread,
             )
             await self._ws_rpc_request(
                 "send_message",
@@ -375,10 +379,9 @@ class WhatsapperNotificationService(BaseNotificationService):
                     "chatId": chat_id,
                     "message": msg,
                     **({"quotedMessageId": reply_to_message_id} if reply_to_message_id else {}),
+                    **({"markUnread": True} if mark_unread else {}),
                 },
             )
-            if mark_unread:
-                await self._mark_chat_unread(chat_id)
         except Exception as err:  # pylint: disable=broad-except
             _LOGGER.error("Sending to %s failed: %s", chat_id, err)
 

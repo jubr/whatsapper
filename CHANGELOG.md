@@ -1,5 +1,6 @@
 ## Unreleased (2026-02-27)
 
+- Combined send + `data.mark_unread` keeps the chat unread. The send skips the read receipt and unread is re-applied after the chat settles.
 - Notify and websocket RPC can mark a chat unread (`data.mark_unread` / `mark_unread`).
 - The chat translator blueprint marks the conversation unread after the final reaction.
 - Send-test now falls back to a raw WhatsApp chat-id edit box when the channel list fetch fails.
